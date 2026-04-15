@@ -1,0 +1,51 @@
+import { Link, useLocation } from 'react-router-dom';
+import { Trophy, User, MessageSquare, Compass } from 'lucide-react';
+
+export default function Sidebar() {
+  const { pathname } = useLocation();
+
+  const navItems = [
+    { label: 'Explore', icon: <Compass size={22} />, path: '/spaces' },
+    { label: 'My Passport', icon: <User size={22} />, path: '/profile/me' },
+    { label: 'Leaderboard', icon: <Trophy size={22} />, path: '/leaderboard' },
+    { label: 'Inbox', icon: <MessageSquare size={22} />, path: '#' },
+  ];
+
+  return (
+    <aside className="fixed top-0 left-0 h-screen w-20 lg:w-64 bg-[#0A0A0A] border-r border-white/10 flex flex-col z-40 transition-all">
+      <div className="h-20 flex items-center justify-center lg:justify-start px-0 lg:px-6 border-b border-white/10 shrink-0">
+        <Link to="/" className="flex items-center border border-white/20 px-3 py-1.5 hover:border-bright-blue transition-colors bg-[#0A0A0A]">
+          <span className="font-heading font-black text-xl lg:text-2xl tracking-widest uppercase text-bright-blue">ZK</span>
+          <span className="font-heading font-black text-xl lg:text-2xl tracking-widest uppercase text-white">.LY</span>
+        </Link>
+      </div>
+
+      <nav className="flex-1 py-8 px-4 flex flex-col gap-2 overflow-y-auto w-full">
+        {navItems.map((item) => {
+          const isActive = pathname === item.path || (item.path !== '/' && pathname.startsWith(item.path));
+          return (
+            <Link 
+              key={item.label} 
+              to={item.path}
+              className={`flex items-center gap-4 px-4 py-3 group hover:bg-white/5 transition-colors ${isActive ? 'text-bright-blue bg-[#0000FE]/5 border-l-2 border-bright-blue' : 'text-white/60 border-l-2 border-transparent'}`}
+            >
+              <div className={`${isActive ? 'text-bright-blue' : 'text-white/60 group-hover:text-white'}`}>
+                {item.icon}
+              </div>
+              <span className={`hidden lg:block font-medium ${isActive ? 'text-white' : 'group-hover:text-white'}`}>
+                {item.label}
+              </span>
+            </Link>
+          );
+        })}
+      </nav>
+
+      <div className="p-4 mt-auto">
+        <div className="hidden lg:block bg-[#161616] p-4 border border-white/10">
+          <div className="text-xs text-bright-blue uppercase tracking-widest font-bold mb-2">Connected Wallet</div>
+          <div className="font-mono text-sm">0x7f3e...8a9b</div>
+        </div>
+      </div>
+    </aside>
+  );
+}
