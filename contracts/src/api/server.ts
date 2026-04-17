@@ -2,6 +2,7 @@ import { createServer } from "node:http";
 import { createHash, randomUUID } from "node:crypto";
 
 interface ReviewRequest {
+  spaceId?: string;
   questId?: string;
   artifactUrl?: string;
   artifactText?: string;
@@ -15,6 +16,7 @@ interface CommitmentRequest {
 
 interface ReviewRecord {
   reviewId: string;
+  spaceId: string;
   questId: string;
   artifactUrl: string;
   artifactText?: string;
@@ -42,8 +44,76 @@ interface CommitmentRecord {
   createdAt: string;
 }
 
+interface SpaceRecord {
+  id: string;
+  name: string;
+  desc: string;
+  members: number;
+  quests: number;
+  createdAt: string;
+  creatorWallet?: string;
+}
+
+interface SpaceCreateRequest {
+  name?: string;
+  desc?: string;
+  creatorWallet?: string;
+}
+
+interface DisclosureRecord {
+  certificateId: string;
+  spaceId: string;
+  questId: string;
+  reviewId: string;
+  commitmentId: string;
+  artifactUrl: string;
+  evidenceHash: string;
+  commitmentHash: string;
+  disclosed: {
+    passed: boolean;
+    scoreBand: string;
+    walletHint: string;
+    reviewedAt: string;
+  };
+}
+
 const reviews = new Map<string, ReviewRecord>();
 const commitments = new Map<string, CommitmentRecord>();
+const spaces = new Map<string, SpaceRecord>([
+  [
+    "midnight",
+    {
+      id: "midnight",
+      name: "Midnight Fellowship",
+      desc: "Reference space for the Midnight Network community builders and educators.",
+      members: 1420,
+      quests: 34,
+      createdAt: "2026-04-01T00:00:00.000Z",
+    },
+  ],
+  [
+    "oblivion",
+    {
+      id: "oblivion",
+      name: "Oblivion Protocol",
+      desc: "ZK-powered GDPR deletion services ecosystem.",
+      members: 890,
+      quests: 12,
+      createdAt: "2026-04-01T00:00:00.000Z",
+    },
+  ],
+  [
+    "zkdonor",
+    {
+      id: "zkdonor",
+      name: "zkDonor Labs",
+      desc: "Medical logistics transparency platform.",
+      members: 340,
+      quests: 8,
+      createdAt: "2026-04-01T00:00:00.000Z",
+    },
+  ],
+]);
 const PORT = Number(process.env.PORT ?? 8787);
 
 function sendJson(response: any, statusCode: number, body: unknown) {
@@ -98,8 +168,29 @@ function scoreFromInput(input: ReviewRequest) {
   };
 }
 
+function slugify(input: string) {
+  return input
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48);
+}
+
+function toScoreBand(score: number) {
+  if (score >= 85) return "A";
+  if (score >= 75) return "B";
+  if (score >= 70) return "C";
+  return "D";
+}
+
+function walletHint(address: string) {
+  if (address.length < 10) return address;
+  return `${address.slice(0, 6)}...${address.slice(-4)}`;
+}
+
 function createReview(input: ReviewRequest): ReviewRecord {
   const reviewId = `review_${randomUUID()}`;
+  const spaceId = input.spaceId?.trim() || "midnight";
   const questId = input.questId?.trim() || "blog-quest-demo";
   const artifactUrl =
     input.artifactUrl?.trim() || "https://dev.to/midnight/demo";
@@ -112,6 +203,7 @@ function createReview(input: ReviewRequest): ReviewRecord {
 
   return {
     reviewId,
+    spaceId,
     questId,
     artifactUrl,
     artifactText,
@@ -153,6 +245,28 @@ function createCommitment(
   };
 }
 
+function toDisclosureRecord(
+  review: ReviewRecord,
+  commitment: CommitmentRecord,
+): DisclosureRecord {
+  return {
+    certificateId: commitment.commitmentId,
+    spaceId: review.spaceId,
+    questId: review.questId,
+    reviewId: review.reviewId,
+    commitmentId: commitment.commitmentId,
+    artifactUrl: review.artifactUrl,
+    evidenceHash: review.evidenceHash,
+    commitmentHash: commitment.commitmentHash,
+    disclosed: {
+      passed: review.passed,
+      scoreBand: toScoreBand(review.score),
+      walletHint: walletHint(commitment.walletAddress),
+      reviewedAt: review.reviewedAt,
+    },
+  };
+}
+
 const server = createServer(async (request, response) => {
   if (!request.url) {
     sendJson(response, 400, { error: "Missing request URL" });
@@ -173,9 +287,59 @@ const server = createServer(async (request, response) => {
     sendJson(response, 200, {
       ok: true,
       service: "zk.ly mock ai api",
+      spaces: spaces.size,
       reviews: reviews.size,
       commitments: commitments.size,
     });
+    return;
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/spaces") {
+    sendJson(response, 200, {
+      items: Array.from(spaces.values()),
+    });
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/spaces") {
+    try {
+      const body = (await readJsonBody(request)) as SpaceCreateRequest;
+      const name = body.name?.trim();
+      const desc = body.desc?.trim();
+
+      if (!name || !desc) {
+        sendJson(response, 400, {
+          error: "name and desc are required",
+        });
+        return;
+      }
+
+      const baseId = slugify(name) || `space-${randomUUID().slice(0, 8)}`;
+      let id = baseId;
+      let suffix = 1;
+      while (spaces.has(id)) {
+        id = `${baseId}-${suffix}`;
+        suffix += 1;
+      }
+
+      const space: SpaceRecord = {
+        id,
+        name,
+        desc,
+        members: 1,
+        quests: 1,
+        createdAt: new Date().toISOString(),
+        creatorWallet: body.creatorWallet?.trim() || undefined,
+      };
+
+      spaces.set(space.id, space);
+      sendJson(response, 200, space);
+    } catch (error) {
+      sendJson(response, 400, {
+        error: "Invalid space payload",
+        details: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
     return;
   }
 
@@ -225,6 +389,7 @@ const server = createServer(async (request, response) => {
       sendJson(response, 200, {
         ...commitment,
         review,
+        disclosure: toDisclosureRecord(review, commitment),
         chainNote:
           "Contracts are not deployed yet, so this is a pre-commit authorization artifact.",
       });
@@ -234,6 +399,47 @@ const server = createServer(async (request, response) => {
         details: error instanceof Error ? error.message : "Unknown error",
       });
     }
+    return;
+  }
+
+  if (
+    request.method === "GET" &&
+    url.pathname.startsWith("/api/commitments/")
+  ) {
+    const commitmentId = url.pathname.split("/").pop() ?? "";
+    const commitment = commitments.get(commitmentId);
+    if (!commitment) {
+      sendJson(response, 404, { error: "Commitment not found" });
+      return;
+    }
+
+    const review = reviews.get(commitment.reviewId);
+    if (!review) {
+      sendJson(response, 404, { error: "Review not found for commitment" });
+      return;
+    }
+
+    sendJson(response, 200, {
+      ...commitment,
+      review,
+      disclosure: toDisclosureRecord(review, commitment),
+    });
+    return;
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/admin/disclosures") {
+    const disclosures = Array.from(commitments.values())
+      .map((commitment) => {
+        const review = reviews.get(commitment.reviewId);
+        if (!review) return null;
+        return toDisclosureRecord(review, commitment);
+      })
+      .filter((record): record is DisclosureRecord => record !== null)
+      .sort((a, b) =>
+        b.disclosed.reviewedAt.localeCompare(a.disclosed.reviewedAt),
+      );
+
+    sendJson(response, 200, { items: disclosures });
     return;
   }
 
