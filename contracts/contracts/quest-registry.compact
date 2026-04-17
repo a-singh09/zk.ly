@@ -1,0 +1,97 @@
+pragma language_version >= 0.22;
+import CompactStandardLibrary;
+
+export enum QuestStatus { ACTIVE, PAUSED, EXPIRED, CAP_REACHED }
+
+export struct QuestDefinition {
+  space_id: Bytes<32>;
+  sprint_id: Bytes<32>;
+  creator_key: Bytes<32>;
+  quest_type: Bytes<8>;
+  criteria_commitment: Bytes<32>;
+  freq_slots: Uint<64>;
+  max_completions: Uint<32>;
+  completion_count: Uint<32>;
+  expires_at_slot: Uint<64>;
+  status: QuestStatus;
+  xp_value: Uint<16>;
+}
+
+export ledger quests: Map<Bytes<32>, QuestDefinition>;
+export ledger quest_count: Counter;
+
+witness caller_secret_key(): Bytes<32>;
+witness get_criteria_bytes(): Bytes<256>;
+
+pure circuit derive_creator_key(sk: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<2, Bytes<32>>>([
+    pad(32, "zkquest:creator:"),
+    sk
+  ]);
+}
+
+export circuit create_quest(
+  space_id: Bytes<32>,
+  sprint_id: Bytes<32>,
+  quest_type: Bytes<8>,
+  freq_slots: Uint<64>,
+  max_completions: Uint<32>,
+  expires_at_slot: Uint<64>,
+  xp_value: Uint<16>,
+  timestamp: Bytes<32>
+): Bytes<32> {
+  const sk = caller_secret_key();
+  const creator_key = derive_creator_key(sk);
+  const criteria_bytes = get_criteria_bytes();
+  const criteria_commitment = persistentHash<Bytes<256>>(criteria_bytes);
+
+  const quest_id = persistentHash<Vector<3, Bytes<32>>>([
+    creator_key,
+    criteria_commitment,
+    timestamp
+  ]);
+  const public_quest_id = disclose(quest_id);
+
+  quests.insert(public_quest_id, QuestDefinition {
+    space_id: disclose(space_id),
+    sprint_id: disclose(sprint_id),
+    creator_key: disclose(creator_key),
+    quest_type: disclose(quest_type),
+    criteria_commitment: disclose(criteria_commitment),
+    freq_slots: disclose(freq_slots),
+    max_completions: disclose(max_completions),
+    completion_count: 0,
+    expires_at_slot: disclose(expires_at_slot),
+    status: disclose(QuestStatus.ACTIVE),
+    xp_value: disclose(xp_value)
+  });
+
+  quest_count.increment(1);
+  return public_quest_id;
+}
+
+export circuit increment_completion(quest_id: Bytes<32>): [] {
+  const public_quest_id = disclose(quest_id);
+  const rec = quests.lookup(public_quest_id);
+  assert(rec.status == QuestStatus.ACTIVE, "Quest not active");
+
+  const new_count = (rec.completion_count + 1) as Uint<32>;
+
+  quests.insert(public_quest_id, QuestDefinition {
+    space_id: rec.space_id,
+    sprint_id: rec.sprint_id,
+    creator_key: rec.creator_key,
+    quest_type: rec.quest_type,
+    criteria_commitment: rec.criteria_commitment,
+    freq_slots: rec.freq_slots,
+    max_completions: rec.max_completions,
+    completion_count: disclose(new_count),
+    expires_at_slot: rec.expires_at_slot,
+    status: disclose(
+      rec.max_completions > 0 && new_count >= rec.max_completions
+      ? QuestStatus.CAP_REACHED
+      : rec.status
+    ),
+    xp_value: rec.xp_value
+  });
+}

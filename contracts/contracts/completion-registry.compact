@@ -1,0 +1,88 @@
+pragma language_version >= 0.22;
+import CompactStandardLibrary;
+
+export enum CompletionStatus { VERIFIED, REJECTED, REVOKED }
+
+export struct CompletionCert {
+  quest_id: Bytes<32>;
+  sprint_id: Bytes<32>;
+  space_id: Bytes<32>;
+  completer_key: Bytes<32>;
+  evidence_class: Bytes<8>;
+  status: CompletionStatus;
+  issued_at_slot: Uint<64>;
+  xp_awarded: Uint<16>;
+}
+
+export ledger completions: Map<Bytes<32>, CompletionCert>;
+
+witness get_user_secret_key(): Bytes<32>;
+witness get_evidence_hash(): Bytes<32>;
+witness get_evidence_class_raw(): Bytes<8>;
+witness get_verification_score(): Uint<32>;
+witness get_criteria_bytes(): Bytes<256>;
+witness get_req_evidence_class(): Bytes<8>;
+witness get_min_score_threshold(): Uint<32>;
+witness get_freq_slots_required(): Uint<64>;
+witness get_last_completion_slot(): Uint<64>;
+witness get_current_slot(): Uint<64>;
+
+export circuit verify_completion(
+  quest_id: Bytes<32>,
+  sprint_id: Bytes<32>,
+  space_id: Bytes<32>,
+  on_chain_commitment: Bytes<32>,
+  xp_value: Uint<16>
+): Bytes<32> {
+  const user_sk = get_user_secret_key();
+  const evidence_hash = get_evidence_hash();
+  const evid_class = get_evidence_class_raw();
+  const score = get_verification_score();
+  const crit_bytes = get_criteria_bytes();
+  const req_class = get_req_evidence_class();
+  const min_score = get_min_score_threshold();
+  const freq_slots = get_freq_slots_required();
+  const last_slot = get_last_completion_slot();
+  const curr_slot = get_current_slot();
+
+  const computed_commitment = persistentHash<Bytes<256>>(crit_bytes);
+  assert(computed_commitment == on_chain_commitment, "Criteria mismatch");
+
+  assert(evid_class == req_class, "Evidence class mismatch");
+  assert(score >= min_score, "Score below threshold");
+
+  const completer_key = persistentHash<Vector<2, Bytes<32>>>([
+    pad(32, "zkquest:completer:"),
+    user_sk
+  ]);
+
+  assert(
+    freq_slots == 0 ||
+    last_slot == 0 ||
+    curr_slot >= (last_slot + freq_slots) as Uint<64>
+    ,
+    "Frequency limit not met"
+  );
+
+  const public_quest_id = disclose(quest_id);
+  const public_slot = disclose(curr_slot);
+  const slot_bytes = (public_slot as Field) as Bytes<32>;
+
+  const cert_id = persistentHash<Vector<2, Bytes<32>>>([
+    public_quest_id,
+    slot_bytes
+  ]);
+
+  completions.insert(cert_id, CompletionCert {
+    quest_id: disclose(quest_id),
+    sprint_id: disclose(sprint_id),
+    space_id: disclose(space_id),
+    completer_key: disclose(completer_key),
+    evidence_class: disclose(evid_class),
+    status: disclose(CompletionStatus.VERIFIED),
+    issued_at_slot: disclose(curr_slot),
+    xp_awarded: disclose(xp_value)
+  });
+
+  return disclose(cert_id);
+}
