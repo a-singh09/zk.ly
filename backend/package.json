@@ -1,0 +1,16 @@
+{
+  "name": "zkly-backend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx src/api/server.ts",
+    "build": "tsc",
+    "start": "node dist/api/server.js"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}

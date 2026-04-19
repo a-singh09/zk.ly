@@ -8,7 +8,7 @@
     "build": "tsc",
     "deploy": "tsx src/deploy.ts",
     "cli": "tsx src/cli.ts",
-    "api": "tsx src/api/server.ts",
+    "api": "tsx ../backend/src/api/server.ts",
     "proof-server:start": "docker compose up -d",
     "proof-server:stop": "docker compose down"
   },
