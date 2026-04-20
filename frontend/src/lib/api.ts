@@ -12,6 +12,7 @@ export interface AiReviewResponse {
   passed: boolean;
   evidenceHash: string;
   summary: string;
+  reviewerNotes?: string;
   breakdown: {
     accuracy: number;
     completeness: number;
@@ -138,6 +139,38 @@ export function getCommitment(commitmentId: string) {
 
 export function getAdminDisclosures() {
   return requestJson<{ items: DisclosureRecord[] }>("/api/admin/disclosures");
+}
+
+export interface SubmissionRecord {
+  submissionId: string;
+  reviewId: string;
+  artifactUrl: string;
+  walletAddress: string;
+  walletHint: string;
+  score: number;
+  threshold: number;
+  aiPassed: boolean;
+  scoreBand: string;
+  summary: string;
+  reviewerNotes?: string;
+  breakdown: { accuracy: number; completeness: number; originality: number; relevance: number };
+  evidenceHash: string;
+  submittedAt: string;
+  adminDecision: "approved" | "rejected" | null;
+  confirmed: boolean;
+}
+
+export function getAdminSubmissions() {
+  return requestJson<{ items: SubmissionRecord[] }>("/api/admin/submissions");
+}
+
+export function confirmSubmissions(
+  decisions: Array<{ submissionId: string; approved: boolean }>,
+) {
+  return requestJson<{ ok: boolean; confirmed: number; confirmedAt: string }>(
+    "/api/admin/confirm",
+    { method: "POST", body: JSON.stringify({ decisions }) },
+  );
 }
 
 export async function fetchDevToArticle(url: string): Promise<DevToArticle> {

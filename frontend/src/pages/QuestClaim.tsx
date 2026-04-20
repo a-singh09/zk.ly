@@ -297,6 +297,11 @@ export default function QuestClaim() {
                     <p className="mt-3 text-white/60 leading-7">
                       {reviewResult.summary}
                     </p>
+                    {reviewResult.reviewerNotes && (
+                      <p className="mt-2 text-white/50 leading-7 text-xs italic">
+                        {reviewResult.reviewerNotes}
+                      </p>
+                    )}
                   </div>
 
                   <div className="border border-white/10 bg-[#0A0A0A] p-4 font-mono text-xs text-white/70 break-all">

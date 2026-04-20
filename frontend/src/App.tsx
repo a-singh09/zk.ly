@@ -10,6 +10,7 @@ import AdminDashboard from "./pages/AdminDashboard";
 import AdminReviewers from "./pages/AdminReviewers";
 import AppLayout from "./components/AppLayout";
 import AdminLayout from "./components/AdminLayout";
+import AdminGuard from "./components/AdminGuard";
 import { NotificationProvider } from "./lib/NotificationContext";
 import { MidnightWalletProvider } from "./lib/MidnightWalletContext";
 
@@ -73,17 +74,21 @@ function App() {
             <Route
               path="/admin"
               element={
-                <AdminLayout>
-                  <AdminDashboard />
-                </AdminLayout>
+                <AdminGuard>
+                  <AdminLayout>
+                    <AdminDashboard />
+                  </AdminLayout>
+                </AdminGuard>
               }
             />
             <Route
               path="/admin/reviewers"
               element={
-                <AdminLayout>
-                  <AdminReviewers />
-                </AdminLayout>
+                <AdminGuard>
+                  <AdminLayout>
+                    <AdminReviewers />
+                  </AdminLayout>
+                </AdminGuard>
               }
             />
           </Routes>

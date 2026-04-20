@@ -1,18 +1,25 @@
-import { Settings, Plus, Network, Layers, Upload } from "lucide-react";
+import { Settings, Plus, Network, Layers, Upload, CheckCircle, XCircle, AlertCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import {
   createSpace,
   getAdminDisclosures,
+  getAdminSubmissions,
+  confirmSubmissions,
   getSpaces,
   type DisclosureRecord,
   type SpaceRecord,
+  type SubmissionRecord,
 } from "../lib/api";
 import { useMidnightWallet } from "../lib/MidnightWalletContext";
 
 export default function AdminDashboard() {
-  const [activeTab, setActiveTab] = useState("Spaces");
+  const [activeTab, setActiveTab] = useState("Submissions");
   const [spaces, setSpaces] = useState<SpaceRecord[]>([]);
   const [disclosures, setDisclosures] = useState<DisclosureRecord[]>([]);
+  const [submissions, setSubmissions] = useState<SubmissionRecord[]>([]);
+  const [overrides, setOverrides] = useState<Record<string, boolean | null>>({});
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [confirming, setConfirming] = useState(false);
   const [spaceName, setSpaceName] = useState("");
   const [spaceDesc, setSpaceDesc] = useState("");
   const [savingSpace, setSavingSpace] = useState(false);
@@ -22,20 +29,62 @@ export default function AdminDashboard() {
 
   const loadAdminData = async () => {
     try {
-      const [spaceResponse, disclosureResponse] = await Promise.all([
+      const [spaceResponse, disclosureResponse, submissionsResponse] = await Promise.all([
         getSpaces(),
         getAdminDisclosures(),
+        getAdminSubmissions(),
       ]);
       setSpaces(spaceResponse.items);
       setDisclosures(disclosureResponse.items);
+      setSubmissions(submissionsResponse.items);
     } catch {
-      // Keep page usable with existing mocked widgets when API is unavailable.
+      // Keep page usable when API is unavailable.
     }
   };
 
   useEffect(() => {
     void loadAdminData();
   }, []);
+
+  const effectiveDecision = (s: SubmissionRecord): boolean => {
+    const override = overrides[s.submissionId];
+    if (override !== undefined && override !== null) return override;
+    return s.aiPassed;
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const selectAll = () => {
+    if (selected.size === submissions.length) setSelected(new Set());
+    else setSelected(new Set(submissions.map((s) => s.submissionId)));
+  };
+
+  const handleConfirm = async () => {
+    if (selected.size === 0) return;
+    setAdminError(null);
+    setConfirming(true);
+    try {
+      const decisions = Array.from(selected).map((id) => {
+        const sub = submissions.find((s) => s.submissionId === id)!;
+        return { submissionId: id, approved: effectiveDecision(sub) };
+      });
+      await confirmSubmissions(decisions);
+      setAdminMessage(`${decisions.length} submission(s) confirmed. Wallet addresses stored for disbursement.`);
+      setSelected(new Set());
+      void loadAdminData();
+    } catch (err) {
+      setAdminError(err instanceof Error ? err.message : "Confirm failed");
+    } finally {
+      setConfirming(false);
+    }
+  };
 
   const handleCreateSpace = async () => {
     setAdminError(null);
@@ -89,7 +138,7 @@ export default function AdminDashboard() {
 
       <div className="p-8 lg:p-12 max-w-7xl mx-auto">
         <div className="flex flex-wrap gap-4 mb-12">
-          {["Spaces", "Disclosures", "Quest Builder", "Permissions"].map(
+          {["Submissions", "Spaces", "Disclosures", "Quest Builder"].map(
             (t) => (
               <button
                 key={t}
@@ -101,6 +150,11 @@ export default function AdminDashboard() {
                 }`}
               >
                 {t}
+                {t === "Submissions" && submissions.length > 0 && (
+                  <span className="ml-2 bg-white/20 text-white text-xs px-2 py-0.5">
+                    {submissions.length}
+                  </span>
+                )}
               </button>
             ),
           )}
@@ -114,6 +168,176 @@ export default function AdminDashboard() {
         {adminMessage && (
           <div className="mb-8 border border-emerald-500/30 bg-emerald-500/10 text-emerald-200 px-5 py-4 text-sm">
             {adminMessage}
+          </div>
+        )}
+
+        {activeTab === "Submissions" && (
+          <div className="space-y-6">
+            {/* Toolbar */}
+            <div className="flex items-center justify-between flex-wrap gap-4">
+              <div className="flex items-center gap-4">
+                <button
+                  onClick={selectAll}
+                  className="px-5 py-3 border border-white/20 text-xs font-bold uppercase tracking-widest hover:border-bright-blue hover:text-bright-blue transition-colors"
+                >
+                  {selected.size === submissions.length && submissions.length > 0 ? "Deselect All" : "Select All"}
+                </button>
+                <span className="text-white/40 text-sm font-mono">
+                  {selected.size} selected
+                </span>
+              </div>
+              <button
+                onClick={handleConfirm}
+                disabled={selected.size === 0 || confirming}
+                className="px-8 py-3 bg-bright-blue text-white font-bold uppercase tracking-widest hover:bg-bright-blue/80 transition-colors border border-bright-blue disabled:opacity-40 disabled:cursor-not-allowed text-sm"
+              >
+                {confirming ? "Confirming..." : `Confirm ${selected.size > 0 ? `(${selected.size})` : ""} & Store Wallets`}
+              </button>
+            </div>
+
+            {submissions.length === 0 ? (
+              <div className="bg-[#161616] border border-white/10 p-16 text-center">
+                <AlertCircle className="mx-auto text-white/20 mb-4" size={40} />
+                <p className="text-white/40 text-sm">No submissions yet. Users submit dev.to articles via the Quest Claim page.</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {submissions.map((sub) => {
+                  const isSelected = selected.has(sub.submissionId);
+                  const override = overrides[sub.submissionId];
+                  const decision = effectiveDecision(sub);
+                  const isOverridden = override !== undefined && override !== null;
+
+                  return (
+                    <div
+                      key={sub.submissionId}
+                      className={`bg-[#161616] border p-6 transition-colors ${
+                        isSelected ? "border-bright-blue" : "border-white/10"
+                      }`}
+                    >
+                      <div className="flex items-start gap-4">
+                        {/* Checkbox */}
+                        <button
+                          onClick={() => toggleSelect(sub.submissionId)}
+                          className={`mt-1 w-5 h-5 border-2 flex-shrink-0 flex items-center justify-center transition-colors ${
+                            isSelected ? "border-bright-blue bg-bright-blue" : "border-white/30 hover:border-bright-blue"
+                          }`}
+                        >
+                          {isSelected && <span className="text-white text-xs font-bold">✓</span>}
+                        </button>
+
+                        <div className="flex-1 min-w-0">
+                          {/* Article URL */}
+                          <a
+                            href={sub.artifactUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-bright-blue font-mono text-sm hover:underline break-all"
+                          >
+                            {sub.artifactUrl}
+                          </a>
+
+                          {/* Meta row */}
+                          <div className="flex flex-wrap gap-3 mt-3 text-xs font-mono text-white/50">
+                            <span>Wallet: {sub.walletHint}</span>
+                            <span>·</span>
+                            <span>{new Date(sub.submittedAt).toLocaleDateString()}</span>
+                            <span>·</span>
+                            <span>Score: <strong className="text-white">{sub.score}</strong>/{sub.threshold}</span>
+                            <span>·</span>
+                            <span>Band: <strong className="text-white">{sub.scoreBand}</strong></span>
+                          </div>
+
+                          {/* Summary + notes */}
+                          <p className="mt-3 text-white/60 text-sm leading-6">{sub.summary}</p>
+                          {sub.reviewerNotes && (
+                            <p className="mt-1 text-white/40 text-xs italic leading-5">{sub.reviewerNotes}</p>
+                          )}
+
+                          {/* Breakdown */}
+                          <div className="grid grid-cols-4 gap-2 mt-4">
+                            {Object.entries(sub.breakdown).map(([key, val]) => (
+                              <div key={key} className="bg-[#0A0A0A] border border-white/10 p-3 text-center">
+                                <div className="text-[10px] uppercase tracking-widest text-white/40 mb-1">{key}</div>
+                                <div className="font-bold text-white">{val}</div>
+                              </div>
+                            ))}
+                          </div>
+
+                          {/* Wallet address for disbursement */}
+                          <div className="mt-4 bg-[#0A0A0A] border border-white/10 p-3">
+                            <div className="text-[10px] uppercase tracking-widest text-white/40 mb-1">Wallet Address (for disbursement)</div>
+                            <div className="font-mono text-xs text-white/70 break-all">{sub.walletAddress}</div>
+                          </div>
+                        </div>
+
+                        {/* Decision panel */}
+                        <div className="flex-shrink-0 flex flex-col items-end gap-3">
+                          {/* AI badge */}
+                          <div className={`flex items-center gap-2 px-3 py-1.5 border text-xs font-bold uppercase tracking-widest ${
+                            sub.aiPassed
+                              ? "border-emerald-500/40 text-emerald-400 bg-emerald-500/10"
+                              : "border-amber-500/40 text-amber-400 bg-amber-500/10"
+                          }`}>
+                            {sub.aiPassed ? <CheckCircle size={14} /> : <XCircle size={14} />}
+                            AI: {sub.aiPassed ? "Pass" : "Fail"}
+                          </div>
+
+                          {/* Admin override */}
+                          <div className="flex flex-col gap-1 text-xs">
+                            <span className="text-white/30 uppercase tracking-widest text-[10px]">Admin</span>
+                            <div className="flex gap-1">
+                              <button
+                                onClick={() => setOverrides((p) => ({ ...p, [sub.submissionId]: true }))}
+                                className={`px-3 py-1.5 border font-bold uppercase tracking-widest transition-colors ${
+                                  override === true
+                                    ? "border-emerald-500 bg-emerald-500/20 text-emerald-400"
+                                    : "border-white/20 text-white/40 hover:border-emerald-500 hover:text-emerald-400"
+                                }`}
+                              >
+                                Approve
+                              </button>
+                              <button
+                                onClick={() => setOverrides((p) => ({ ...p, [sub.submissionId]: false }))}
+                                className={`px-3 py-1.5 border font-bold uppercase tracking-widest transition-colors ${
+                                  override === false
+                                    ? "border-red-500 bg-red-500/20 text-red-400"
+                                    : "border-white/20 text-white/40 hover:border-red-500 hover:text-red-400"
+                                }`}
+                              >
+                                Reject
+                              </button>
+                              {isOverridden && (
+                                <button
+                                  onClick={() => setOverrides((p) => { const n = {...p}; delete n[sub.submissionId]; return n; })}
+                                  className="px-3 py-1.5 border border-white/20 text-white/30 hover:text-white hover:border-white/40 uppercase text-[10px] tracking-widest transition-colors"
+                                >
+                                  Reset
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Final decision badge */}
+                          <div className={`flex items-center gap-1 text-[10px] uppercase tracking-widest font-bold ${
+                            decision ? "text-emerald-400" : "text-red-400"
+                          }`}>
+                            {isOverridden && <span className="text-white/30">Override →</span>}
+                            {decision ? "Will Approve" : "Will Reject"}
+                          </div>
+
+                          {sub.confirmed && (
+                            <div className="text-[10px] uppercase tracking-widest text-bright-blue font-bold">
+                              ✓ Confirmed
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
 
