@@ -1,35 +1,102 @@
-import { Settings, Plus, Network, Layers, Upload } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import {
+  Activity,
+  AlertTriangle,
+  CheckCircle2,
+  Plus,
+  Shield,
+  Settings,
+} from "lucide-react";
+import {
+  createReviewerPolicy,
   createSpace,
+  decideEscalation,
   getAdminDisclosures,
+  getAdminEscalations,
+  getReviewerPolicies,
   getSpaces,
   type DisclosureRecord,
+  type EscalationRecord,
+  type EscalationStatus,
+  type ReviewerPolicyRecord,
   type SpaceRecord,
 } from "../lib/api";
 import { useMidnightWallet } from "../lib/MidnightWalletContext";
 
+const tabs = ["Overview", "Spaces", "Escalations", "Policies", "Disclosures"];
+
+function formatDate(iso: string) {
+  return new Date(iso).toLocaleString();
+}
+
 export default function AdminDashboard() {
-  const [activeTab, setActiveTab] = useState("Spaces");
+  const [activeTab, setActiveTab] = useState<(typeof tabs)[number]>("Overview");
   const [spaces, setSpaces] = useState<SpaceRecord[]>([]);
   const [disclosures, setDisclosures] = useState<DisclosureRecord[]>([]);
+  const [escalations, setEscalations] = useState<EscalationRecord[]>([]);
+  const [policies, setPolicies] = useState<ReviewerPolicyRecord[]>([]);
+
   const [spaceName, setSpaceName] = useState("");
   const [spaceDesc, setSpaceDesc] = useState("");
   const [savingSpace, setSavingSpace] = useState(false);
+
+  const [policyAgentId, setPolicyAgentId] = useState("zkquest-custom-v1");
+  const [policyModel, setPolicyModel] = useState("gpt-4.1-mini");
+  const [policyCategory, setPolicyCategory] = useState("technical");
+  const [policyScoreThreshold, setPolicyScoreThreshold] = useState("70");
+  const [policyDimensions, setPolicyDimensions] = useState(
+    JSON.stringify(
+      {
+        technicalDepth: 0.4,
+        factualAccuracy: 0.3,
+        clarity: 0.2,
+        originality: 0.1,
+      },
+      null,
+      2,
+    ),
+  );
+  const [policyMaxTokens, setPolicyMaxTokens] = useState("8000");
+  const [policyTimeoutMs, setPolicyTimeoutMs] = useState("12000");
+  const [policyRetryLimit, setPolicyRetryLimit] = useState("1");
+  const [savingPolicy, setSavingPolicy] = useState(false);
+
   const [adminError, setAdminError] = useState<string | null>(null);
   const [adminMessage, setAdminMessage] = useState<string | null>(null);
+
   const { walletAddress } = useMidnightWallet();
+
+  const pendingEscalations = useMemo(
+    () => escalations.filter((item) => item.status === "pending-admin"),
+    [escalations],
+  );
 
   const loadAdminData = async () => {
     try {
-      const [spaceResponse, disclosureResponse] = await Promise.all([
+      setAdminError(null);
+      const [
+        spaceResponse,
+        disclosureResponse,
+        escalationResponse,
+        policyResponse,
+      ] = await Promise.all([
         getSpaces(),
         getAdminDisclosures(),
+        getAdminEscalations(),
+        getReviewerPolicies(),
       ]);
+
       setSpaces(spaceResponse.items);
       setDisclosures(disclosureResponse.items);
-    } catch {
-      // Keep page usable with existing mocked widgets when API is unavailable.
+      setEscalations(escalationResponse.items);
+      setPolicies(policyResponse.items);
+    } catch (error) {
+      setAdminError(
+        error instanceof Error
+          ? error.message
+          : "Could not load admin dashboard data",
+      );
     }
   };
 
@@ -53,7 +120,6 @@ export default function AdminDashboard() {
         desc: spaceDesc.trim(),
         creatorWallet: walletAddress ?? undefined,
       });
-
       setSpaces((previous) => [created, ...previous]);
       setSpaceName("");
       setSpaceDesc("");
@@ -68,52 +134,206 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleEscalationDecision = async (
+    escalationId: string,
+    status: EscalationStatus,
+  ) => {
+    setAdminError(null);
+    setAdminMessage(null);
+
+    try {
+      const updated = await decideEscalation(escalationId, {
+        status,
+        adminNotes:
+          status === "approved"
+            ? "Approved after manual admin verification."
+            : "Rejected after manual admin verification.",
+        resolutionSummary:
+          status === "approved"
+            ? "Submission accepted via human escalation path."
+            : "Submission remains below acceptance threshold.",
+        decidedBy: walletAddress ?? "admin-console",
+      });
+
+      setEscalations((previous) =>
+        previous.map((item) =>
+          item.escalationId === updated.escalationId ? updated : item,
+        ),
+      );
+      setAdminMessage(`Escalation ${status}.`);
+    } catch (error) {
+      setAdminError(
+        error instanceof Error
+          ? error.message
+          : "Could not apply escalation decision",
+      );
+    }
+  };
+
+  const handleCreatePolicy = async () => {
+    setAdminError(null);
+    setAdminMessage(null);
+
+    let dimensions: Record<string, number>;
+    try {
+      dimensions = JSON.parse(policyDimensions) as Record<string, number>;
+    } catch {
+      setAdminError("Policy dimensions must be valid JSON.");
+      return;
+    }
+
+    setSavingPolicy(true);
+    try {
+      const created = await createReviewerPolicy({
+        agentId: policyAgentId.trim(),
+        model: policyModel.trim(),
+        category: policyCategory.trim(),
+        scoreThreshold: Number(policyScoreThreshold),
+        dimensions,
+        maxTokens: Number(policyMaxTokens),
+        timeoutMs: Number(policyTimeoutMs),
+        retryLimit: Number(policyRetryLimit),
+      });
+      setPolicies((previous) => [created, ...previous]);
+      setAdminMessage("Reviewer policy created.");
+      setActiveTab("Policies");
+    } catch (error) {
+      setAdminError(
+        error instanceof Error
+          ? error.message
+          : "Could not create reviewer policy",
+      );
+    } finally {
+      setSavingPolicy(false);
+    }
+  };
+
   return (
     <div className="w-full">
       <div className="h-24 border-b border-white/10 bg-[#161616] flex items-center px-12 justify-between">
         <div className="flex items-center gap-6">
           <div className="w-12 h-12 bg-bright-blue flex items-center justify-center">
-            <Settings className="text-white" size={24} />
+            <Shield className="text-white" size={24} />
           </div>
           <h1 className="font-heading font-black text-3xl uppercase tracking-widest text-white">
-            Creator Console
+            Admin Control Center
           </h1>
         </div>
         <button
-          onClick={() => setActiveTab("Spaces")}
-          className="px-6 py-3 bg-[#0A0A0A] border border-white/20 text-white font-bold tracking-widest uppercase hover:border-bright-blue transition-colors text-sm flex items-center gap-3"
+          onClick={() => void loadAdminData()}
+          className="px-6 py-3 bg-[#0A0A0A] border border-white/20 text-white font-bold tracking-widest uppercase hover:border-bright-blue transition-colors text-sm"
         >
-          <Plus size={18} /> New Space
+          Refresh
         </button>
       </div>
 
-      <div className="p-8 lg:p-12 max-w-7xl mx-auto">
-        <div className="flex flex-wrap gap-4 mb-12">
-          {["Spaces", "Disclosures", "Quest Builder", "Permissions"].map(
-            (t) => (
-              <button
-                key={t}
-                onClick={() => setActiveTab(t)}
-                className={`px-8 py-4 text-sm font-bold uppercase tracking-[0.2em] transition-all border ${
-                  activeTab === t
-                    ? "bg-bright-blue border-bright-blue text-white"
-                    : "bg-[#161616] border-white/10 text-white/50 hover:bg-[#232323] hover:text-white"
-                }`}
-              >
-                {t}
-              </button>
-            ),
-          )}
+      <div className="p-8 lg:p-12 max-w-7xl mx-auto space-y-8">
+        <div className="grid md:grid-cols-4 gap-4">
+          <div className="border border-white/10 bg-[#161616] p-5">
+            <div className="text-white/40 text-xs uppercase tracking-widest mb-2">
+              Spaces
+            </div>
+            <div className="text-3xl font-black">{spaces.length}</div>
+          </div>
+          <div className="border border-white/10 bg-[#161616] p-5">
+            <div className="text-white/40 text-xs uppercase tracking-widest mb-2">
+              Pending Escalations
+            </div>
+            <div className="text-3xl font-black text-amber-300">
+              {pendingEscalations.length}
+            </div>
+          </div>
+          <div className="border border-white/10 bg-[#161616] p-5">
+            <div className="text-white/40 text-xs uppercase tracking-widest mb-2">
+              Disclosures
+            </div>
+            <div className="text-3xl font-black">{disclosures.length}</div>
+          </div>
+          <div className="border border-white/10 bg-[#161616] p-5">
+            <div className="text-white/40 text-xs uppercase tracking-widest mb-2">
+              Reviewer Policies
+            </div>
+            <div className="text-3xl font-black">{policies.length}</div>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-4">
+          {tabs.map((t) => (
+            <button
+              key={t}
+              onClick={() => setActiveTab(t)}
+              className={`px-6 py-3 text-xs font-bold uppercase tracking-[0.2em] transition-all border ${
+                activeTab === t
+                  ? "bg-bright-blue border-bright-blue text-white"
+                  : "bg-[#161616] border-white/10 text-white/50 hover:bg-[#232323] hover:text-white"
+              }`}
+            >
+              {t}
+            </button>
+          ))}
         </div>
 
         {adminError && (
-          <div className="mb-8 border border-red-500/30 bg-red-500/10 text-red-200 px-5 py-4 text-sm">
+          <div className="border border-red-500/30 bg-red-500/10 text-red-200 px-5 py-4 text-sm">
             {adminError}
           </div>
         )}
+
         {adminMessage && (
-          <div className="mb-8 border border-emerald-500/30 bg-emerald-500/10 text-emerald-200 px-5 py-4 text-sm">
+          <div className="border border-emerald-500/30 bg-emerald-500/10 text-emerald-200 px-5 py-4 text-sm">
             {adminMessage}
+          </div>
+        )}
+
+        {activeTab === "Overview" && (
+          <div className="grid lg:grid-cols-2 gap-6">
+            <div className="border border-white/10 bg-[#161616] p-8">
+              <h2 className="font-heading text-xl uppercase tracking-widest mb-4 flex items-center gap-2">
+                <Activity size={18} className="text-bright-blue" />
+                System Status
+              </h2>
+              <ul className="space-y-3 text-sm text-white/70">
+                <li>
+                  Mock AI review endpoint is active and returns deterministic
+                  analysis.
+                </li>
+                <li>
+                  Escalation queue supports manual approve/reject workflow.
+                </li>
+                <li>
+                  Reviewer policy parameters are editable through admin
+                  endpoints.
+                </li>
+                <li>
+                  Wallet-linked admin identity can be attached to decisions.
+                </li>
+              </ul>
+            </div>
+            <div className="border border-white/10 bg-[#161616] p-8">
+              <h2 className="font-heading text-xl uppercase tracking-widest mb-4 flex items-center gap-2">
+                <AlertTriangle size={18} className="text-amber-300" />
+                Attention Queue
+              </h2>
+              {pendingEscalations.length === 0 ? (
+                <p className="text-sm text-white/60">
+                  No pending escalations right now.
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {pendingEscalations.slice(0, 4).map((item) => (
+                    <div
+                      key={item.escalationId}
+                      className="border border-white/10 bg-[#0A0A0A] p-4"
+                    >
+                      <div className="text-xs uppercase tracking-widest text-white/40 mb-2">
+                        {item.escalationId}
+                      </div>
+                      <div className="text-sm text-white/80">{item.reason}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -124,275 +344,294 @@ export default function AdminDashboard() {
                 <Plus className="text-bright-blue" /> Create New Space
               </h2>
               <div className="grid md:grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-xs font-bold text-white/50 uppercase tracking-widest mb-3">
-                    Space Name
-                  </label>
-                  <input
-                    value={spaceName}
-                    onChange={(event) => setSpaceName(event.target.value)}
-                    type="text"
-                    className="w-full bg-[#0A0A0A] border border-white/10 p-4 outline-none focus:border-bright-blue font-mono text-white"
-                    placeholder="E.g. Midnight Content Guild"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-white/50 uppercase tracking-widest mb-3">
-                    Creator Wallet
-                  </label>
-                  <div className="w-full bg-[#0A0A0A] border border-white/10 p-4 font-mono text-sm text-white/80 break-all">
-                    {walletAddress ??
-                      "Connect wallet from sidebar to attach creator identity"}
-                  </div>
-                </div>
-              </div>
-              <div className="mt-6">
-                <label className="block text-xs font-bold text-white/50 uppercase tracking-widest mb-3">
-                  Description
-                </label>
-                <textarea
-                  value={spaceDesc}
-                  onChange={(event) => setSpaceDesc(event.target.value)}
-                  rows={4}
-                  className="w-full bg-[#0A0A0A] border border-white/10 p-4 outline-none focus:border-bright-blue font-mono text-white resize-none"
-                  placeholder="Describe what this space validates and rewards."
+                <input
+                  value={spaceName}
+                  onChange={(event) => setSpaceName(event.target.value)}
+                  className="w-full bg-[#0A0A0A] border border-white/10 p-4 outline-none focus:border-bright-blue font-mono text-white"
+                  placeholder="Space name"
+                />
+                <input
+                  value={walletAddress ?? ""}
+                  readOnly
+                  className="w-full bg-[#0A0A0A] border border-white/10 p-4 font-mono text-white/70"
+                  placeholder="Connect wallet to attach creator"
                 />
               </div>
+              <textarea
+                value={spaceDesc}
+                onChange={(event) => setSpaceDesc(event.target.value)}
+                rows={3}
+                className="mt-4 w-full bg-[#0A0A0A] border border-white/10 p-4 outline-none focus:border-bright-blue font-mono text-white resize-none"
+                placeholder="Space description"
+              />
               <button
                 onClick={handleCreateSpace}
                 disabled={savingSpace}
-                className="mt-6 px-8 py-4 bg-bright-blue text-white font-bold tracking-widest uppercase hover:bg-[#0000FE]/90 transition-colors border border-bright-blue disabled:opacity-70 disabled:cursor-not-allowed"
+                className="mt-4 px-8 py-3 bg-bright-blue text-white font-bold tracking-widest uppercase border border-bright-blue disabled:opacity-70"
               >
-                {savingSpace ? "Creating Space..." : "Create Space"}
+                {savingSpace ? "Creating..." : "Create Space"}
               </button>
             </div>
 
-            <div className="bg-[#161616] border border-white/10 p-10">
-              <h2 className="text-xl font-bold font-heading uppercase tracking-widest mb-8 text-white flex items-center gap-3">
-                <Layers className="text-bright-blue" /> Active Protocol Spaces
-              </h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {spaces.map((space) => (
-                  <div
-                    key={space.id}
-                    className="bg-[#0A0A0A] border border-white/10 p-8 hover:border-bright-blue transition-colors group"
-                  >
-                    <h3 className="text-2xl font-bold font-heading uppercase mb-2 group-hover:text-bright-blue transition-colors">
-                      {space.name}
-                    </h3>
-                    <p className="text-white/60 mb-6 leading-relaxed">
-                      {space.desc}
-                    </p>
-                    <div className="grid grid-cols-3 gap-4 mb-6">
-                      <div className="border border-white/10 p-4 text-center bg-[#161616]">
-                        <div className="text-2xl font-black text-white">
-                          {space.quests}
-                        </div>
-                        <div className="text-[10px] text-white/50 uppercase tracking-widest mt-1">
-                          Quests
-                        </div>
+            <div className="grid md:grid-cols-2 gap-6">
+              {spaces.map((space) => (
+                <div
+                  key={space.id}
+                  className="border border-white/10 bg-[#161616] p-6 hover:bg-[#1a1a1a] transition-colors"
+                >
+                  <div className="flex items-start justify-between gap-4 mb-3">
+                    <div>
+                      <h3 className="text-xl font-bold mb-2">{space.name}</h3>
+                      <p className="text-sm text-white/60 mb-3">{space.desc}</p>
+                    </div>
+                    <Link
+                      to={`/spaces/${space.id}/manage`}
+                      className="p-2 border border-white/10 bg-[#0A0A0A] text-white/80 hover:text-bright-blue hover:border-bright-blue transition-colors flex-shrink-0"
+                      title="Manage space and quests"
+                    >
+                      <Settings size={18} />
+                    </Link>
+                  </div>
+                  <div className="flex gap-3 text-xs text-white/50 mb-4">
+                    <span>{space.members} members</span>
+                    <span>•</span>
+                    <span>{space.quests} quests</span>
+                  </div>
+                  <div className="text-xs text-white/40 uppercase tracking-widest border-t border-white/10 pt-3">
+                    Space ID: {space.id}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {activeTab === "Escalations" && (
+          <div className="space-y-4">
+            {escalations.length === 0 ? (
+              <div className="border border-white/10 bg-[#161616] p-6 text-white/60 text-sm">
+                No escalations found yet.
+              </div>
+            ) : (
+              escalations.map((item) => (
+                <div
+                  key={item.escalationId}
+                  className="border border-white/10 bg-[#161616] p-6"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+                    <div>
+                      <div className="text-xs uppercase tracking-widest text-white/40">
+                        {item.escalationId}
                       </div>
-                      <div className="border border-white/10 p-4 text-center bg-[#161616]">
-                        <div className="text-2xl font-black text-white">
-                          {space.members}
-                        </div>
-                        <div className="text-[10px] text-white/50 uppercase tracking-widest mt-1">
-                          Members
-                        </div>
-                      </div>
-                      <div className="border border-white/10 p-4 text-center bg-[#161616]">
-                        <div className="text-sm font-black text-white break-all">
-                          {space.id}
-                        </div>
-                        <div className="text-[10px] text-white/50 uppercase tracking-widest mt-1">
-                          Space ID
-                        </div>
+                      <div className="font-mono text-xs text-white/60 mt-1">
+                        Review: {item.reviewId}
                       </div>
                     </div>
-                    <button className="w-full py-4 text-center border-2 border-white/10 text-white font-bold tracking-widest uppercase hover:border-white transition-colors text-xs">
-                      Manage Space
-                    </button>
+                    <div className="text-xs uppercase tracking-widest px-3 py-1 border border-white/20">
+                      {item.status}
+                    </div>
                   </div>
-                ))}
+
+                  <p className="text-sm text-white/80 mb-2">{item.reason}</p>
+                  <p className="font-mono text-xs text-white/60 break-all mb-4">
+                    {item.artifactUrl}
+                  </p>
+
+                  {item.status === "pending-admin" ? (
+                    <div className="flex gap-3">
+                      <button
+                        onClick={() =>
+                          void handleEscalationDecision(
+                            item.escalationId,
+                            "approved",
+                          )
+                        }
+                        className="px-4 py-2 bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 text-xs font-bold uppercase tracking-widest"
+                      >
+                        Approve
+                      </button>
+                      <button
+                        onClick={() =>
+                          void handleEscalationDecision(
+                            item.escalationId,
+                            "rejected",
+                          )
+                        }
+                        className="px-4 py-2 bg-red-500/20 border border-red-400/40 text-red-300 text-xs font-bold uppercase tracking-widest"
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="text-xs text-white/60">
+                      {item.resolutionSummary || "Escalation resolved"}
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+        )}
+
+        {activeTab === "Policies" && (
+          <div className="grid lg:grid-cols-[1.2fr_1fr] gap-6">
+            <div className="border border-white/10 bg-[#161616] p-8">
+              <h2 className="text-lg font-bold uppercase tracking-widest mb-6 flex items-center gap-2">
+                <Plus size={16} className="text-bright-blue" />
+                Create Policy
+              </h2>
+              <div className="grid md:grid-cols-2 gap-4">
+                <input
+                  value={policyAgentId}
+                  onChange={(event) => setPolicyAgentId(event.target.value)}
+                  className="bg-[#0A0A0A] border border-white/10 p-3 font-mono text-sm"
+                  placeholder="Agent ID"
+                />
+                <input
+                  value={policyModel}
+                  onChange={(event) => setPolicyModel(event.target.value)}
+                  className="bg-[#0A0A0A] border border-white/10 p-3 font-mono text-sm"
+                  placeholder="Model"
+                />
+                <input
+                  value={policyCategory}
+                  onChange={(event) => setPolicyCategory(event.target.value)}
+                  className="bg-[#0A0A0A] border border-white/10 p-3 font-mono text-sm"
+                  placeholder="Category"
+                />
+                <input
+                  value={policyScoreThreshold}
+                  onChange={(event) =>
+                    setPolicyScoreThreshold(event.target.value)
+                  }
+                  className="bg-[#0A0A0A] border border-white/10 p-3 font-mono text-sm"
+                  placeholder="Score threshold"
+                />
+                <input
+                  value={policyMaxTokens}
+                  onChange={(event) => setPolicyMaxTokens(event.target.value)}
+                  className="bg-[#0A0A0A] border border-white/10 p-3 font-mono text-sm"
+                  placeholder="Max tokens"
+                />
+                <input
+                  value={policyTimeoutMs}
+                  onChange={(event) => setPolicyTimeoutMs(event.target.value)}
+                  className="bg-[#0A0A0A] border border-white/10 p-3 font-mono text-sm"
+                  placeholder="Timeout ms"
+                />
               </div>
+              <input
+                value={policyRetryLimit}
+                onChange={(event) => setPolicyRetryLimit(event.target.value)}
+                className="mt-4 w-full bg-[#0A0A0A] border border-white/10 p-3 font-mono text-sm"
+                placeholder="Retry limit"
+              />
+              <textarea
+                value={policyDimensions}
+                onChange={(event) => setPolicyDimensions(event.target.value)}
+                rows={7}
+                className="mt-4 w-full bg-[#0A0A0A] border border-white/10 p-3 font-mono text-xs resize-none"
+              />
+              <button
+                onClick={handleCreatePolicy}
+                disabled={savingPolicy}
+                className="mt-4 px-8 py-3 bg-bright-blue text-white font-bold tracking-widest uppercase border border-bright-blue disabled:opacity-70"
+              >
+                {savingPolicy ? "Saving..." : "Create Policy"}
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              {policies.map((policy) => (
+                <div
+                  key={policy.id}
+                  className="border border-white/10 bg-[#161616] p-5"
+                >
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="font-bold text-sm uppercase tracking-widest">
+                      {policy.agentId}
+                    </h3>
+                    <span
+                      className={`text-[10px] uppercase tracking-widest px-2 py-1 border ${policy.active ? "border-emerald-400/40 text-emerald-300" : "border-white/20 text-white/50"}`}
+                    >
+                      {policy.active ? "active" : "inactive"}
+                    </span>
+                  </div>
+                  <div className="text-xs text-white/60 space-y-1">
+                    <p>Model: {policy.model}</p>
+                    <p>Category: {policy.category}</p>
+                    <p>Threshold: {policy.scoreThreshold}</p>
+                    <p>Retry: {policy.retryLimit}</p>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         )}
 
         {activeTab === "Disclosures" && (
-          <div className="bg-[#161616] border border-white/10 p-10">
-            <h2 className="text-xl font-bold font-heading uppercase tracking-widest mb-8 text-white flex items-center gap-3">
-              <Network className="text-bright-blue" /> Admin Disclosure
-              Verifications
-            </h2>
+          <div className="space-y-4">
             {disclosures.length === 0 ? (
-              <p className="text-white/50 text-sm leading-7">
-                No disclosed verification records yet. Submit a dev.to quest and
-                authorize commitment to populate this table.
-              </p>
+              <div className="border border-white/10 bg-[#161616] p-6 text-white/60 text-sm">
+                No disclosures yet.
+              </div>
             ) : (
-              <div className="space-y-5">
-                {disclosures.map((item) => (
-                  <div
-                    key={item.certificateId}
-                    className="border border-white/10 bg-[#0A0A0A] p-6"
-                  >
-                    <div className="grid lg:grid-cols-2 gap-6">
-                      <div>
-                        <div className="text-[11px] uppercase tracking-widest text-white/40 mb-2">
-                          Artifact URL
-                        </div>
-                        <p className="font-mono text-xs text-white/80 break-all">
-                          {item.artifactUrl}
-                        </p>
+              disclosures.map((item) => (
+                <div
+                  key={item.certificateId}
+                  className="border border-white/10 bg-[#161616] p-6"
+                >
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="font-mono text-xs text-white/60">
+                      {item.certificateId}
+                    </div>
+                    <div
+                      className={
+                        item.disclosed.passed
+                          ? "text-emerald-300 text-xs uppercase tracking-widest"
+                          : "text-amber-300 text-xs uppercase tracking-widest"
+                      }
+                    >
+                      {item.disclosed.passed ? "passed" : "needs-revision"}
+                    </div>
+                  </div>
+                  <div className="grid md:grid-cols-3 gap-4 text-xs">
+                    <div className="bg-[#0A0A0A] border border-white/10 p-3">
+                      <div className="text-white/40 uppercase tracking-widest mb-2">
+                        Space
                       </div>
-                      <div>
-                        <div className="text-[11px] uppercase tracking-widest text-white/40 mb-2">
-                          Certificate ID
-                        </div>
-                        <p className="font-mono text-xs text-white/80 break-all">
-                          {item.certificateId}
-                        </p>
+                      <div className="font-mono text-white/80">
+                        {item.spaceId}
                       </div>
                     </div>
-                    <div className="grid md:grid-cols-4 gap-4 mt-5">
-                      <div className="border border-white/10 bg-[#121212] p-4">
-                        <div className="text-[10px] uppercase tracking-widest text-white/40 mb-2">
-                          Space
-                        </div>
-                        <div className="font-mono text-xs text-white/80">
-                          {item.spaceId}
-                        </div>
+                    <div className="bg-[#0A0A0A] border border-white/10 p-3">
+                      <div className="text-white/40 uppercase tracking-widest mb-2">
+                        Quest
                       </div>
-                      <div className="border border-white/10 bg-[#121212] p-4">
-                        <div className="text-[10px] uppercase tracking-widest text-white/40 mb-2">
-                          Quest
-                        </div>
-                        <div className="font-mono text-xs text-white/80">
-                          {item.questId}
-                        </div>
+                      <div className="font-mono text-white/80">
+                        {item.questId}
                       </div>
-                      <div className="border border-white/10 bg-[#121212] p-4">
-                        <div className="text-[10px] uppercase tracking-widest text-white/40 mb-2">
-                          Disclosed Score Band
-                        </div>
-                        <div className="font-bold text-white">
-                          {item.disclosed.scoreBand}
-                        </div>
+                    </div>
+                    <div className="bg-[#0A0A0A] border border-white/10 p-3">
+                      <div className="text-white/40 uppercase tracking-widest mb-2">
+                        Reviewed At
                       </div>
-                      <div className="border border-white/10 bg-[#121212] p-4">
-                        <div className="text-[10px] uppercase tracking-widest text-white/40 mb-2">
-                          Disclosed Status
-                        </div>
-                        <div
-                          className={
-                            item.disclosed.passed
-                              ? "font-bold text-emerald-400"
-                              : "font-bold text-amber-400"
-                          }
-                        >
-                          {item.disclosed.passed ? "Passed" : "Needs revision"}
-                        </div>
+                      <div className="font-mono text-white/80">
+                        {formatDate(item.disclosed.reviewedAt)}
                       </div>
                     </div>
                   </div>
-                ))}
-              </div>
+                </div>
+              ))
             )}
           </div>
         )}
 
-        {activeTab === "Quest Builder" && (
-          <div className="grid lg:grid-cols-[2fr_1fr] gap-8">
-            <div className="bg-[#161616] border border-white/10 p-10">
-              <h2 className="text-xl font-bold font-heading uppercase tracking-widest mb-8 text-white">
-                Configure New Quest
-              </h2>
-              <div className="space-y-8">
-                <div>
-                  <label className="block text-xs font-bold text-white/50 uppercase tracking-widest mb-3">
-                    Quest Title
-                  </label>
-                  <input
-                    type="text"
-                    className="w-full bg-[#0A0A0A] border border-white/10 p-4 outline-none focus:border-bright-blue font-mono text-white"
-                    placeholder="E.g. Submit a PR to docs/tutorials"
-                  />
-                </div>
-                <div className="grid md:grid-cols-2 gap-6">
-                  <div>
-                    <label className="block text-xs font-bold text-white/50 uppercase tracking-widest mb-3">
-                      XP Bounty
-                    </label>
-                    <input
-                      type="number"
-                      className="w-full bg-[#0A0A0A] border border-white/10 p-4 outline-none focus:border-bright-blue font-mono text-white text-xl"
-                      defaultValue="200"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-white/50 uppercase tracking-widest mb-3">
-                      Frequency Gate
-                    </label>
-                    <select className="w-full bg-[#0A0A0A] border border-white/10 p-4 outline-none focus:border-bright-blue font-mono text-white appearance-none">
-                      <option>One-Time</option>
-                      <option>Daily</option>
-                      <option>Weekly</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="border-t border-white/10 pt-8">
-                  <h3 className="text-sm font-bold font-heading uppercase tracking-widest mb-6 text-white">
-                    Private Acceptance Criteria
-                  </h3>
-                  <p className="text-white/40 text-sm mb-6 max-w-xl">
-                    Criteria bytes are sent directly to Midnight's private
-                    ledger state. Only the immutable commitment hash survives
-                    on-chain.
-                  </p>
-                  <div className="w-full border-2 border-dashed border-white/20 p-12 flex flex-col items-center justify-center bg-[#0A0A0A] hover:bg-[#121212] transition-colors cursor-pointer group">
-                    <Upload
-                      size={32}
-                      className="text-white/30 group-hover:text-bright-blue mb-4 transition-colors"
-                    />
-                    <div className="font-bold text-white uppercase tracking-widest mb-2">
-                      Upload Rubric File
-                    </div>
-                    <div className="text-white/40 text-xs font-mono">
-                      Supported: .json, .md, .txt (Max 256 bytes)
-                    </div>
-                  </div>
-                </div>
-
-                <button className="w-full py-5 bg-bright-blue text-white font-bold uppercase tracking-widest hover:bg-transparent border border-bright-blue transition-colors text-lg">
-                  Build & Commit to Chain
-                </button>
-              </div>
-            </div>
-
-            <div className="bg-[#0A0A0A] border border-white/10 p-10 h-fit">
-              <h3 className="font-bold uppercase tracking-widest mb-6 pb-4 border-b border-white/10 flex items-center gap-3">
-                <Network className="text-bright-blue" size={20} /> Circuit
-                Checks
-              </h3>
-              <ul className="space-y-6 text-sm text-white/50 font-mono">
-                <li>
-                  <strong className="text-white block mb-1">CHECK 1:</strong>{" "}
-                  Criteria signature matches private persistence state
-                </li>
-                <li>
-                  <strong className="text-white block mb-1">CHECK 2:</strong>{" "}
-                  Provided evidence passes requested AI/Git Adapter
-                </li>
-                <li>
-                  <strong className="text-white block mb-1">CHECK 3:</strong>{" "}
-                  Evaluated score supersedes defined threshold boundary
-                </li>
-              </ul>
-            </div>
-          </div>
-        )}
+        <div className="border border-white/10 bg-[#161616] p-5 text-xs text-white/50 flex items-center gap-2">
+          <CheckCircle2 size={14} className="text-emerald-300" />
+          Admin actions are currently demo-backed in-memory APIs, prepared for
+          replacement with on-chain and DB adapters.
+        </div>
       </div>
     </div>
   );

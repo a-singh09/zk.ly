@@ -11,11 +11,13 @@ import { useNotification } from "../lib/NotificationContext";
 import { useMidnightWallet } from "../lib/MidnightWalletContext";
 import {
   authorizeReviewCommitment,
+  createEscalation,
   fetchDevToArticle,
   runAiReview,
   type AiReviewResponse,
   type CommitmentResponse,
   type DevToArticle,
+  type EscalationRecord,
 } from "../lib/api";
 
 export default function QuestClaim() {
@@ -31,12 +33,18 @@ export default function QuestClaim() {
   const [isReviewing, setIsReviewing] = useState(false);
   const [isFetchingArticle, setIsFetchingArticle] = useState(false);
   const [isAuthorizing, setIsAuthorizing] = useState(false);
+  const [isEscalating, setIsEscalating] = useState(false);
   const [article, setArticle] = useState<DevToArticle | null>(null);
   const [reviewResult, setReviewResult] = useState<AiReviewResponse | null>(
     null,
   );
   const [commitmentResult, setCommitmentResult] =
     useState<CommitmentResponse | null>(null);
+  const [escalationResult, setEscalationResult] =
+    useState<EscalationRecord | null>(null);
+  const [escalationReason, setEscalationReason] = useState(
+    "AI missed contextual evidence. Please review manually.",
+  );
   const [error, setError] = useState<string | null>(null);
 
   const handleFetchArticle = async () => {
@@ -64,6 +72,7 @@ export default function QuestClaim() {
   const handleReview = async () => {
     setError(null);
     setCommitmentResult(null);
+    setEscalationResult(null);
     setIsReviewing(true);
     try {
       const review = await runAiReview({
@@ -82,6 +91,34 @@ export default function QuestClaim() {
       );
     } finally {
       setIsReviewing(false);
+    }
+  };
+
+  const handleEscalateToAdmin = async () => {
+    if (!reviewResult) return;
+    setError(null);
+    setIsEscalating(true);
+
+    try {
+      const escalation = await createEscalation({
+        reviewId: reviewResult.reviewId,
+        reason: escalationReason,
+        artifactUrl,
+        requestedByWallet: walletAddress ?? undefined,
+        notes: `Quest ${questId ?? "blog-quest-demo"} escalation requested from claim flow.`,
+      });
+      setEscalationResult(escalation);
+      notifyComplete(
+        "Escalation submitted. Admin reviewers can now approve or reject manually.",
+      );
+    } catch (escalationError) {
+      setError(
+        escalationError instanceof Error
+          ? escalationError.message
+          : "Could not submit escalation",
+      );
+    } finally {
+      setIsEscalating(false);
     }
   };
 
@@ -230,7 +267,39 @@ export default function QuestClaim() {
                     ? "Authorize Commitment"
                     : "Connect + Authorize"}
               </button>
+
+              {reviewResult && !reviewResult.passed && (
+                <button
+                  onClick={handleEscalateToAdmin}
+                  disabled={isEscalating || !escalationReason.trim()}
+                  className="px-8 py-4 border border-amber-400/40 text-amber-300 font-bold tracking-widest uppercase hover:border-amber-300 hover:text-amber-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isEscalating ? "Escalating..." : "Escalate to Admin"}
+                </button>
+              )}
             </div>
+
+            {reviewResult && !reviewResult.passed && (
+              <div className="mt-6 border border-amber-400/20 bg-amber-500/5 p-5">
+                <label className="block text-sm font-bold tracking-widest uppercase text-amber-200 mb-3">
+                  Escalation Reason
+                </label>
+                <textarea
+                  value={escalationReason}
+                  onChange={(event) => setEscalationReason(event.target.value)}
+                  rows={3}
+                  className="w-full bg-[#0A0A0A] border border-amber-400/30 px-4 py-3 outline-none focus:border-amber-300 font-mono text-amber-100 resize-none"
+                  placeholder="Why should this submission be accepted despite AI score?"
+                />
+              </div>
+            )}
+
+            {escalationResult && (
+              <div className="mt-6 border border-emerald-500/30 bg-emerald-500/10 text-emerald-200 px-5 py-4 text-sm">
+                Escalation submitted: {escalationResult.escalationId}. Status:{" "}
+                {escalationResult.status}
+              </div>
+            )}
           </div>
 
           <div className="space-y-6">
@@ -297,6 +366,12 @@ export default function QuestClaim() {
                     <p className="mt-3 text-white/60 leading-7">
                       {reviewResult.summary}
                     </p>
+                    <p className="mt-3 text-white/70 leading-7">
+                      {reviewResult.analysisMessage}
+                    </p>
+                    <div className="mt-3 text-[11px] uppercase tracking-widest text-white/40">
+                      Mode: {reviewResult.reviewMode}
+                    </div>
                   </div>
 
                   <div className="border border-white/10 bg-[#0A0A0A] p-4 font-mono text-xs text-white/70 break-all">

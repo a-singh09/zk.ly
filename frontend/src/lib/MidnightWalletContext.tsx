@@ -12,25 +12,43 @@ interface ShieldedAddressesResponse {
 
 interface MidnightWalletApi {
   connect(networkId: string): Promise<{
-    getShieldedAddresses(): Promise<ShieldedAddressesResponse>;
+    getShieldedAddresses?: () => Promise<ShieldedAddressesResponse>;
     getConnectionStatus(): Promise<boolean>;
     getConfiguration(): Promise<unknown>;
   }>;
 }
 
+interface LaceCip30Api {
+  getUsedAddresses(): Promise<string[]>;
+  getChangeAddress?(): Promise<string>;
+}
+
+interface LaceCip30Provider {
+  enable(): Promise<LaceCip30Api>;
+}
+
 interface MidnightWalletContextValue {
   isConnected: boolean;
+  isWalletInstalled: boolean;
   isConnecting: boolean;
   walletAddress: string | null;
   walletNetwork: string | null;
+  walletError: string | null;
   connectWallet: () => Promise<string>;
   disconnectWallet: () => void;
+  clearWalletError: () => void;
 }
 
 declare global {
   interface Window {
-    midnight?: {
-      mnLace?: MidnightWalletApi;
+    midnight?:
+      | MidnightWalletApi
+      | {
+          mnLace?: MidnightWalletApi;
+          lace?: MidnightWalletApi;
+        };
+    cardano?: {
+      lace?: LaceCip30Provider;
     };
   }
 }
@@ -49,26 +67,95 @@ export function MidnightWalletProvider({ children }: { children: ReactNode }) {
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [walletNetwork, setWalletNetwork] = useState<string | null>("preprod");
   const [isConnecting, setIsConnecting] = useState(false);
+  const [walletError, setWalletError] = useState<string | null>(null);
+
+  const networkId = "preprod";
+
+  const resolveMidnightApi = (): MidnightWalletApi | undefined => {
+    const directApi = window.midnight as MidnightWalletApi | undefined;
+    if (directApi && typeof directApi.connect === "function") {
+      return directApi;
+    }
+
+    const nested = window.midnight as
+      | {
+          mnLace?: MidnightWalletApi;
+          lace?: MidnightWalletApi;
+        }
+      | undefined;
+
+    if (nested?.mnLace && typeof nested.mnLace.connect === "function") {
+      return nested.mnLace;
+    }
+
+    if (nested?.lace && typeof nested.lace.connect === "function") {
+      return nested.lace;
+    }
+
+    return undefined;
+  };
+
+  const resolveCardanoLaceProvider = (): LaceCip30Provider | undefined => {
+    const provider = window.cardano?.lace;
+    if (provider && typeof provider.enable === "function") {
+      return provider;
+    }
+    return undefined;
+  };
+
+  const isWalletInstalled = (() => {
+    return Boolean(resolveMidnightApi() || resolveCardanoLaceProvider());
+  })();
 
   const connectWallet = async () => {
     setIsConnecting(true);
+    setWalletError(null);
+
     try {
-      const wallet = window.midnight?.mnLace;
-      if (!wallet) {
-        throw new Error("Midnight Lace wallet was not detected.");
+      const walletApi = resolveMidnightApi();
+
+      if (walletApi) {
+        const connectedApi = await walletApi.connect(networkId);
+        const connectionStatus = await connectedApi.getConnectionStatus();
+        const shielded = await connectedApi.getShieldedAddresses?.();
+
+        if (!connectionStatus || !shielded?.shieldedAddress) {
+          throw new Error("Wallet connection was rejected.");
+        }
+
+        setWalletAddress(shielded.shieldedAddress);
+        setWalletNetwork(networkId);
+        return shielded.shieldedAddress;
       }
 
-      const connectedApi = await wallet.connect("preprod");
-      const addresses = await connectedApi.getShieldedAddresses();
-      const connectionStatus = await connectedApi.getConnectionStatus();
-
-      if (!connectionStatus) {
-        throw new Error("Wallet connection was rejected.");
+      const cardanoLace = resolveCardanoLaceProvider();
+      if (!cardanoLace) {
+        throw new Error(
+          "Lace wallet was not detected. Ensure the extension is enabled for this site and refresh the page.",
+        );
       }
 
-      setWalletAddress(addresses.shieldedAddress);
-      setWalletNetwork("preprod");
-      return addresses.shieldedAddress;
+      const cip30 = await cardanoLace.enable();
+      const used = await cip30.getUsedAddresses();
+      const fallback = cip30.getChangeAddress
+        ? await cip30.getChangeAddress()
+        : undefined;
+      const resolvedAddress = used[0] ?? fallback;
+
+      if (!resolvedAddress) {
+        throw new Error("Lace connected but no wallet address was returned.");
+      }
+
+      setWalletAddress(resolvedAddress);
+      setWalletNetwork("lace");
+      return resolvedAddress;
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Failed to connect Midnight wallet.";
+      setWalletError(message);
+      throw error;
     } finally {
       setIsConnecting(false);
     }
@@ -76,19 +163,33 @@ export function MidnightWalletProvider({ children }: { children: ReactNode }) {
 
   const disconnectWallet = () => {
     setWalletAddress(null);
-    setWalletNetwork(null);
+    setWalletNetwork(networkId);
+  };
+
+  const clearWalletError = () => {
+    setWalletError(null);
   };
 
   const value = useMemo<MidnightWalletContextValue>(
     () => ({
       isConnected: Boolean(walletAddress),
+      isWalletInstalled,
       isConnecting,
       walletAddress,
       walletNetwork,
+      walletError,
       connectWallet,
       disconnectWallet,
+      clearWalletError,
     }),
-    [isConnecting, walletAddress, walletNetwork],
+    [
+      clearWalletError,
+      isConnecting,
+      isWalletInstalled,
+      walletAddress,
+      walletError,
+      walletNetwork,
+    ],
   );
 
   return (

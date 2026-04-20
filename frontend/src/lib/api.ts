@@ -3,6 +3,8 @@ const API_BASE_URL =
 
 export interface AiReviewResponse {
   reviewId: string;
+  reviewMode: "mock";
+  analysisMessage: string;
   spaceId: string;
   questId: string;
   artifactUrl: string;
@@ -61,6 +63,56 @@ export interface DisclosureRecord {
   };
 }
 
+export type EscalationStatus =
+  | "pending-admin"
+  | "approved"
+  | "rejected"
+  | "needs-more-info";
+
+export interface EscalationRecord {
+  escalationId: string;
+  reviewId: string;
+  artifactUrl: string;
+  reason: string;
+  notes?: string;
+  requestedByWallet: string;
+  status: EscalationStatus;
+  requestedAt: string;
+  resolvedAt?: string;
+  adminNotes?: string;
+  resolutionSummary?: string;
+  decidedBy?: string;
+}
+
+export interface ReviewerPolicyRecord {
+  id: string;
+  agentId: string;
+  model: string;
+  category: string;
+  scoreThreshold: number;
+  dimensions: Record<string, number>;
+  maxTokens: number;
+  timeoutMs: number;
+  retryLimit: number;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface QuestRecord {
+  id: string;
+  spaceId: string;
+  name: string;
+  description: string;
+  type: "blog" | "github" | "social" | "onchain" | "custom";
+  policyId?: string;
+  reward: number;
+  creatorWallet?: string;
+  createdAt: string;
+  updatedAt: string;
+  active: boolean;
+}
+
 export interface DevToArticle {
   id: number;
   title: string;
@@ -87,8 +139,21 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   });
 
   if (!response.ok) {
-    const message = await response.text();
-    throw new Error(message || `Request failed with status ${response.status}`);
+    const raw = await response.text();
+    try {
+      const payload = JSON.parse(raw) as {
+        error?: string;
+        details?: string;
+      };
+      const errorText = [payload.error, payload.details]
+        .filter(Boolean)
+        .join(": ");
+      throw new Error(
+        errorText || `Request failed with status ${response.status}`,
+      );
+    } catch {
+      throw new Error(raw || `Request failed with status ${response.status}`);
+    }
   }
 
   return (await response.json()) as T;
@@ -138,6 +203,143 @@ export function getCommitment(commitmentId: string) {
 
 export function getAdminDisclosures() {
   return requestJson<{ items: DisclosureRecord[] }>("/api/admin/disclosures");
+}
+
+export function createEscalation(payload: {
+  reviewId: string;
+  reason: string;
+  artifactUrl?: string;
+  requestedByWallet?: string;
+  notes?: string;
+}) {
+  return requestJson<EscalationRecord>("/api/escalations", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function getAdminEscalations() {
+  return requestJson<{ items: EscalationRecord[] }>("/api/admin/escalations");
+}
+
+export function decideEscalation(
+  escalationId: string,
+  payload: {
+    status: EscalationStatus;
+    adminNotes?: string;
+    resolutionSummary?: string;
+    decidedBy?: string;
+  },
+) {
+  return requestJson<EscalationRecord>(
+    `/api/admin/escalations/${escalationId}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
+export function getReviewerPolicies() {
+  return requestJson<{ items: ReviewerPolicyRecord[] }>(
+    "/api/admin/reviewer-policies",
+  );
+}
+
+export function createReviewerPolicy(payload: {
+  agentId: string;
+  model: string;
+  category: string;
+  scoreThreshold: number;
+  dimensions: Record<string, number>;
+  maxTokens: number;
+  timeoutMs: number;
+  retryLimit: number;
+  active?: boolean;
+}) {
+  return requestJson<ReviewerPolicyRecord>("/api/admin/reviewer-policies", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updateReviewerPolicy(
+  policyId: string,
+  payload: Partial<{
+    agentId: string;
+    model: string;
+    category: string;
+    scoreThreshold: number;
+    dimensions: Record<string, number>;
+    maxTokens: number;
+    timeoutMs: number;
+    retryLimit: number;
+    active: boolean;
+  }>,
+) {
+  return requestJson<ReviewerPolicyRecord>(
+    `/api/admin/reviewer-policies/${policyId}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
+export function getQuests(spaceId?: string) {
+  const params = spaceId ? `?spaceId=${encodeURIComponent(spaceId)}` : "";
+  return requestJson<{ items: QuestRecord[] }>(`/api/quests${params}`);
+}
+
+export function getQuestsBySpace(spaceId: string) {
+  return getQuests(spaceId);
+}
+
+export function getQuest(questId: string) {
+  return requestJson<QuestRecord>(`/api/quests/${questId}`);
+}
+
+export function createQuest(payload: {
+  spaceId: string;
+  name: string;
+  description: string;
+  type?: string;
+  policyId?: string;
+  reward?: number;
+  creatorWallet?: string;
+}) {
+  return requestJson<QuestRecord>("/api/quests", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updateQuest(
+  questId: string,
+  payload: Partial<{
+    name: string;
+    description: string;
+    type: string;
+    policyId?: string;
+    reward: number;
+    active: boolean;
+  }>,
+) {
+  return requestJson<QuestRecord>(`/api/quests/${questId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function deleteQuest(questId: string) {
+  return fetch(`${API_BASE_URL}/api/quests/${questId}`, {
+    method: "DELETE",
+    headers: {
+      "Content-Type": "application/json",
+    },
+  }).then((r) =>
+    r.ok ? Promise.resolve() : r.text().then((t) => Promise.reject(t)),
+  );
 }
 
 export async function fetchDevToArticle(url: string): Promise<DevToArticle> {

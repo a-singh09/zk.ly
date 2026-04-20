@@ -8,6 +8,8 @@ import ProfileCard from "./pages/ProfileCard";
 import Leaderboard from "./pages/Leaderboard";
 import AdminDashboard from "./pages/AdminDashboard";
 import AdminReviewers from "./pages/AdminReviewers";
+import SpaceDetail from "./pages/SpaceDetail";
+import QuestManagement from "./pages/QuestManagement";
 import AppLayout from "./components/AppLayout";
 import AdminLayout from "./components/AdminLayout";
 import { NotificationProvider } from "./lib/NotificationContext";
@@ -83,6 +85,32 @@ function App() {
               element={
                 <AdminLayout>
                   <AdminReviewers />
+                </AdminLayout>
+              }
+            />
+
+            {/* Space and Quest Management Routes */}
+            <Route
+              path="/spaces/:spaceId/manage"
+              element={
+                <AdminLayout>
+                  <SpaceDetail />
+                </AdminLayout>
+              }
+            />
+            <Route
+              path="/spaces/:spaceId/quests/new"
+              element={
+                <AdminLayout>
+                  <QuestManagement />
+                </AdminLayout>
+              }
+            />
+            <Route
+              path="/spaces/:spaceId/quests/:questId/edit"
+              element={
+                <AdminLayout>
+                  <QuestManagement />
                 </AdminLayout>
               }
             />
