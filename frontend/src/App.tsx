@@ -12,6 +12,7 @@ import SpaceDetail from "./pages/SpaceDetail";
 import QuestManagement from "./pages/QuestManagement";
 import AppLayout from "./components/AppLayout";
 import AdminLayout from "./components/AdminLayout";
+import AdminGuard from "./components/AdminGuard";
 import { NotificationProvider } from "./lib/NotificationContext";
 import { MidnightWalletProvider } from "./lib/MidnightWalletContext";
 
@@ -75,17 +76,21 @@ function App() {
             <Route
               path="/admin"
               element={
-                <AdminLayout>
-                  <AdminDashboard />
-                </AdminLayout>
+                <AdminGuard>
+                  <AdminLayout>
+                    <AdminDashboard />
+                  </AdminLayout>
+                </AdminGuard>
               }
             />
             <Route
               path="/admin/reviewers"
               element={
-                <AdminLayout>
-                  <AdminReviewers />
-                </AdminLayout>
+                <AdminGuard>
+                  <AdminLayout>
+                    <AdminReviewers />
+                  </AdminLayout>
+                </AdminGuard>
               }
             />
 
@@ -93,25 +98,31 @@ function App() {
             <Route
               path="/spaces/:spaceId/manage"
               element={
-                <AdminLayout>
-                  <SpaceDetail />
-                </AdminLayout>
+                <AdminGuard>
+                  <AdminLayout>
+                    <SpaceDetail />
+                  </AdminLayout>
+                </AdminGuard>
               }
             />
             <Route
               path="/spaces/:spaceId/quests/new"
               element={
-                <AdminLayout>
-                  <QuestManagement />
-                </AdminLayout>
+                <AdminGuard>
+                  <AdminLayout>
+                    <QuestManagement />
+                  </AdminLayout>
+                </AdminGuard>
               }
             />
             <Route
               path="/spaces/:spaceId/quests/:questId/edit"
               element={
-                <AdminLayout>
-                  <QuestManagement />
-                </AdminLayout>
+                <AdminGuard>
+                  <AdminLayout>
+                    <QuestManagement />
+                  </AdminLayout>
+                </AdminGuard>
               }
             />
           </Routes>

@@ -3,7 +3,7 @@ const API_BASE_URL =
 
 export interface AiReviewResponse {
   reviewId: string;
-  reviewMode: "mock";
+  reviewMode: "mock" | "openai";
   analysisMessage: string;
   spaceId: string;
   questId: string;

@@ -55,7 +55,7 @@ export interface ReviewerPolicyUpdateRequest
 
 export interface ReviewRecord {
   reviewId: string;
-  reviewMode: "mock";
+  reviewMode: "mock" | "openai";
   analysisMessage: string;
   spaceId: string;
   questId: string;

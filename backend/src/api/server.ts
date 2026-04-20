@@ -135,7 +135,7 @@ const server = createServer(async (request, response) => {
   if (request.method === "POST" && url.pathname === "/api/reviews") {
     try {
       const body = (await readJsonBody(request)) as ReviewRequest;
-      const review = createReview(body);
+      const review = await createReview(body);
       reviews.set(review.reviewId, review);
       sendJson(response, 200, review);
     } catch (error) {
