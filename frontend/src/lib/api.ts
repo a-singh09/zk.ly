@@ -1,6 +1,10 @@
 const API_BASE_URL =
   import.meta.env.VITE_ZKLY_API_URL ?? "http://127.0.0.1:8787";
 
+const REQUEST_TIMEOUT_MS = Number(
+  import.meta.env.VITE_API_TIMEOUT_MS ?? 45_000,
+);
+
 export interface AiReviewResponse {
   reviewId: string;
   reviewMode: "mock" | "openai";
@@ -29,12 +33,28 @@ export interface CommitmentResponse {
   walletAddress: string;
   authorizationMode: string;
   commitmentHash: string;
+  reviewCommitmentHash?: string;
+  selectiveDisclosureHash?: string;
+  onChainReviewCommitmentHash?: string;
+  onChainCommitmentCommitmentHash?: string;
+  onChainCertificateId?: string;
+  onChainQuestId?: string;
+  onChainTxId?: string;
+  proofMode: "mock" | "midnight";
   status: "authorized" | "pending-chain";
   createdAt: string;
   chainNote: string;
   review?: AiReviewResponse;
   disclosure?: DisclosureRecord;
 }
+
+export type QuestTrack =
+  | "builder"
+  | "educator"
+  | "advocate"
+  | "community-leadership";
+
+export type RewardMode = "xp-only" | "escrow-auto";
 
 export interface SpaceRecord {
   id: string;
@@ -52,9 +72,16 @@ export interface DisclosureRecord {
   questId: string;
   reviewId: string;
   commitmentId: string;
+  track?: QuestTrack;
   artifactUrl: string;
   evidenceHash: string;
   commitmentHash: string;
+  reviewCommitmentHash?: string;
+  selectiveDisclosureHash?: string;
+  onChainReviewCommitmentHash?: string;
+  onChainCommitmentCommitmentHash?: string;
+  onChainCertificateId?: string;
+  onChainTxId?: string;
   disclosed: {
     passed: boolean;
     scoreBand: string;
@@ -91,6 +118,7 @@ export interface ReviewerPolicyRecord {
   category: string;
   scoreThreshold: number;
   dimensions: Record<string, number>;
+  steps: string[];
   maxTokens: number;
   timeoutMs: number;
   retryLimit: number;
@@ -105,8 +133,18 @@ export interface QuestRecord {
   name: string;
   description: string;
   type: "blog" | "github" | "social" | "onchain" | "custom";
+  track: QuestTrack;
   policyId?: string;
   reward: number;
+  rewardMode: RewardMode;
+  escrowContractAddress?: string;
+  escrowAmount?: number;
+  criteriaJson?: Record<string, unknown>;
+  onChainQuestId?: string;
+  onChainCriteriaCommitment?: string;
+  onChainTxId?: string;
+  onChainMode?: "midnight" | "mock";
+  onChainReason?: string;
   creatorWallet?: string;
   createdAt: string;
   updatedAt: string;
@@ -130,13 +168,32 @@ export interface DevToArticle {
 }
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers ?? {}),
-    },
-  });
+  const controller = new AbortController();
+  const timeout = window.setTimeout(
+    () => controller.abort(),
+    REQUEST_TIMEOUT_MS,
+  );
+
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      ...init,
+      signal: init?.signal ?? controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        ...(init?.headers ?? {}),
+      },
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error(
+        `Request timed out after ${Math.floor(REQUEST_TIMEOUT_MS / 1000)}s. Check backend/proof server health and retry.`,
+      );
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timeout);
+  }
 
   if (!response.ok) {
     const raw = await response.text();
@@ -252,6 +309,7 @@ export function createReviewerPolicy(payload: {
   category: string;
   scoreThreshold: number;
   dimensions: Record<string, number>;
+  steps: string[];
   maxTokens: number;
   timeoutMs: number;
   retryLimit: number;
@@ -271,6 +329,7 @@ export function updateReviewerPolicy(
     category: string;
     scoreThreshold: number;
     dimensions: Record<string, number>;
+    steps: string[];
     maxTokens: number;
     timeoutMs: number;
     retryLimit: number;
@@ -304,13 +363,25 @@ export function createQuest(payload: {
   name: string;
   description: string;
   type?: string;
+  track?: QuestTrack;
   policyId?: string;
   reward?: number;
+  rewardMode?: RewardMode;
+  escrowContractAddress?: string;
+  escrowAmount?: number;
+  criteriaJson?: Record<string, unknown>;
   creatorWallet?: string;
+  publishOnChain?: boolean;
 }) {
   return requestJson<QuestRecord>("/api/quests", {
     method: "POST",
     body: JSON.stringify(payload),
+  });
+}
+
+export function publishQuestOnChain(questId: string) {
+  return requestJson<QuestRecord>(`/api/quests/${questId}/publish`, {
+    method: "POST",
   });
 }
 
@@ -320,8 +391,13 @@ export function updateQuest(
     name: string;
     description: string;
     type: string;
+    track: QuestTrack;
     policyId?: string;
     reward: number;
+    rewardMode: RewardMode;
+    escrowContractAddress?: string;
+    escrowAmount?: number;
+    criteriaJson?: Record<string, unknown>;
     active: boolean;
   }>,
 ) {
@@ -363,4 +439,46 @@ export async function fetchDevToArticle(url: string): Promise<DevToArticle> {
   }
 
   return (await response.json()) as DevToArticle;
+}
+
+export function getLeaderboard() {
+  return requestJson<{
+    items: Array<{
+      rank: number;
+      wallet: string;
+      tier: string;
+      quests: number;
+      spaces: number;
+      xpPublic: number;
+    }>;
+  }>("/api/leaderboard");
+}
+
+export function getProfile(wallet: string) {
+  return requestJson<{
+    wallet: string;
+    tier: string;
+    verifiedQuests: number;
+    activeSpaces: number;
+    xpPublic: number;
+    memberSince: string;
+  }>(`/api/profile/${encodeURIComponent(wallet)}`);
+}
+
+export interface MidnightHealthStatus {
+  ok: boolean;
+  mode: "midnight-backed" | "hybrid-fallback";
+  midnight: {
+    enabled: boolean;
+    reason?: string;
+    questContractAddress?: string;
+    completionContractAddress?: string;
+  };
+  spaces: number;
+  reviews: number;
+  commitments: number;
+}
+
+export function getMidnightHealth(): Promise<MidnightHealthStatus> {
+  return requestJson<MidnightHealthStatus>("/health");
 }

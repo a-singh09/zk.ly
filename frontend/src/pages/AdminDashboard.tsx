@@ -8,6 +8,9 @@ import {
   Shield,
   Settings,
 } from "lucide-react";
+import Editor from "react-simple-code-editor";
+import Prism from "prismjs";
+import "prismjs/components/prism-json";
 import {
   createReviewerPolicy,
   createSpace,
@@ -24,10 +27,17 @@ import {
 } from "../lib/api";
 import { useMidnightWallet } from "../lib/MidnightWalletContext";
 
+const CodeEditor =
+  (Editor as typeof Editor & { default?: typeof Editor }).default ?? Editor;
+
 const tabs = ["Overview", "Spaces", "Escalations", "Policies", "Disclosures"];
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleString();
+}
+
+function highlightJson(code: string) {
+  return Prism.highlight(code, Prism.languages.json, "json");
 }
 
 export default function AdminDashboard() {
@@ -45,13 +55,20 @@ export default function AdminDashboard() {
   const [policyModel, setPolicyModel] = useState("gpt-4.1-mini");
   const [policyCategory, setPolicyCategory] = useState("technical");
   const [policyScoreThreshold, setPolicyScoreThreshold] = useState("70");
-  const [policyDimensions, setPolicyDimensions] = useState(
+  const [policyConfigJson, setPolicyConfigJson] = useState(
     JSON.stringify(
       {
-        technicalDepth: 0.4,
-        factualAccuracy: 0.3,
-        clarity: 0.2,
-        originality: 0.1,
+        dimensions: {
+          technicalDepth: 0.4,
+          factualAccuracy: 0.3,
+          clarity: 0.2,
+          originality: 0.1,
+        },
+        steps: [
+          "It should explain shielded transactions clearly",
+          "It should be clearly documented with working examples",
+          "It should demonstrate understanding of ZK proof generation",
+        ],
       },
       null,
       2,
@@ -174,11 +191,41 @@ export default function AdminDashboard() {
     setAdminError(null);
     setAdminMessage(null);
 
-    let dimensions: Record<string, number>;
+    let parsedConfig: {
+      dimensions?: Record<string, number>;
+      steps?: string[];
+    };
     try {
-      dimensions = JSON.parse(policyDimensions) as Record<string, number>;
+      parsedConfig = JSON.parse(policyConfigJson) as {
+        dimensions?: Record<string, number>;
+        steps?: string[];
+      };
     } catch {
-      setAdminError("Policy dimensions must be valid JSON.");
+      setAdminError("Policy JSON must be valid JSON.");
+      return;
+    }
+
+    const dimensions = parsedConfig.dimensions;
+    if (
+      !dimensions ||
+      typeof dimensions !== "object" ||
+      Array.isArray(dimensions)
+    ) {
+      setAdminError("Policy JSON must include a 'dimensions' object.");
+      return;
+    }
+
+    const steps = Array.isArray(parsedConfig.steps)
+      ? parsedConfig.steps
+          .filter((step) => typeof step === "string")
+          .map((step) => step.trim())
+          .filter((step) => step.length > 0)
+      : [];
+
+    if (steps.length === 0) {
+      setAdminError(
+        "Policy JSON must include a non-empty 'steps' array with review steps.",
+      );
       return;
     }
 
@@ -190,6 +237,7 @@ export default function AdminDashboard() {
         category: policyCategory.trim(),
         scoreThreshold: Number(policyScoreThreshold),
         dimensions,
+        steps,
         maxTokens: Number(policyMaxTokens),
         timeoutMs: Number(policyTimeoutMs),
         retryLimit: Number(policyRetryLimit),
@@ -294,18 +342,19 @@ export default function AdminDashboard() {
               </h2>
               <ul className="space-y-3 text-sm text-white/70">
                 <li>
-                  Mock AI review endpoint is active and returns deterministic
-                  analysis.
+                  AI review endpoint supports policy-aware scoring with
+                  deterministic fallback.
                 </li>
                 <li>
                   Escalation queue supports manual approve/reject workflow.
                 </li>
                 <li>
-                  Reviewer policy parameters are editable through admin
-                  endpoints.
+                  Reviewer policy parameters and `steps` JSON are editable from
+                  this admin panel.
                 </li>
                 <li>
-                  Wallet-linked admin identity can be attached to decisions.
+                  Wallet-linked admin identity can be attached to decisions,
+                  with on-chain runtime status exposed via API health.
                 </li>
               </ul>
             </div>
@@ -409,14 +458,14 @@ export default function AdminDashboard() {
         {activeTab === "Escalations" && (
           <div className="space-y-4">
             {escalations.length === 0 ? (
-              <div className="border border-white/10 bg-[#161616] p-6 text-white/60 text-sm">
+              <div className="border border-white/10 bg-midnight-light p-6 text-white/60 text-sm">
                 No escalations found yet.
               </div>
             ) : (
               escalations.map((item) => (
                 <div
                   key={item.escalationId}
-                  className="border border-white/10 bg-[#161616] p-6"
+                  className="border border-white/10 bg-midnight-light p-6"
                 >
                   <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
                     <div>
@@ -475,7 +524,7 @@ export default function AdminDashboard() {
 
         {activeTab === "Policies" && (
           <div className="grid lg:grid-cols-[1.2fr_1fr] gap-6">
-            <div className="border border-white/10 bg-[#161616] p-8">
+            <div className="border border-white/10 bg-midnight-light p-8">
               <h2 className="text-lg font-bold uppercase tracking-widest mb-6 flex items-center gap-2">
                 <Plus size={16} className="text-bright-blue" />
                 Create Policy
@@ -484,13 +533,13 @@ export default function AdminDashboard() {
                 <input
                   value={policyAgentId}
                   onChange={(event) => setPolicyAgentId(event.target.value)}
-                  className="bg-[#0A0A0A] border border-white/10 p-3 font-mono text-sm"
+                  className="bg-midnight border border-white/10 p-3 font-mono text-sm"
                   placeholder="Agent ID"
                 />
                 <input
                   value={policyModel}
                   onChange={(event) => setPolicyModel(event.target.value)}
-                  className="bg-[#0A0A0A] border border-white/10 p-3 font-mono text-sm"
+                  className="bg-midnight border border-white/10 p-3 font-mono text-sm"
                   placeholder="Model"
                 />
                 <input
@@ -526,12 +575,52 @@ export default function AdminDashboard() {
                 className="mt-4 w-full bg-[#0A0A0A] border border-white/10 p-3 font-mono text-sm"
                 placeholder="Retry limit"
               />
-              <textarea
-                value={policyDimensions}
-                onChange={(event) => setPolicyDimensions(event.target.value)}
-                rows={7}
-                className="mt-4 w-full bg-[#0A0A0A] border border-white/10 p-3 font-mono text-xs resize-none"
-              />
+              <div className="mt-4 border border-white/10 bg-[#0A0A0A]">
+                <div className="px-3 py-2 border-b border-white/10 text-[11px] uppercase tracking-widest text-white/50 flex items-center justify-between">
+                  <span>Policy JSON (dimensions + steps)</span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setPolicyConfigJson(
+                        JSON.stringify(
+                          {
+                            dimensions: {
+                              technicalDepth: 0.4,
+                              factualAccuracy: 0.3,
+                              clarity: 0.2,
+                              originality: 0.1,
+                            },
+                            steps: [
+                              "It should explain shielded transactions clearly",
+                              "It should be clearly documented with working examples",
+                              "It should demonstrate understanding of ZK proof generation",
+                            ],
+                          },
+                          null,
+                          2,
+                        ),
+                      )
+                    }
+                    className="text-[10px] px-2 py-1 border border-white/20 hover:border-bright-blue hover:text-bright-blue transition-colors"
+                  >
+                    Reset Template
+                  </button>
+                </div>
+                <CodeEditor
+                  value={policyConfigJson}
+                  onValueChange={(code) => setPolicyConfigJson(code)}
+                  highlight={highlightJson}
+                  padding={12}
+                  textareaClassName="admin-json-editor-textarea"
+                  className="admin-json-editor min-h-60 text-xs font-mono"
+                />
+                <div className="px-3 py-2 border-t border-white/10 text-[10px] text-white/30">
+                  <strong className="text-white/50">dimensions</strong>:
+                  weighted scoring rubric (must sum to 1.0) ·
+                  <strong className="text-white/50"> steps</strong>: array of
+                  string review requirements
+                </div>
+              </div>
               <button
                 onClick={handleCreatePolicy}
                 disabled={savingPolicy}
@@ -561,6 +650,7 @@ export default function AdminDashboard() {
                     <p>Model: {policy.model}</p>
                     <p>Category: {policy.category}</p>
                     <p>Threshold: {policy.scoreThreshold}</p>
+                    <p>Steps: {policy.steps.length}</p>
                     <p>Retry: {policy.retryLimit}</p>
                   </div>
                 </div>
@@ -629,8 +719,8 @@ export default function AdminDashboard() {
 
         <div className="border border-white/10 bg-[#161616] p-5 text-xs text-white/50 flex items-center gap-2">
           <CheckCircle2 size={14} className="text-emerald-300" />
-          Admin actions are currently demo-backed in-memory APIs, prepared for
-          replacement with on-chain and DB adapters.
+          Admin actions run on hybrid API mode: on-chain when Midnight runtime
+          is ready, with local fallback pathways for offline development.
         </div>
       </div>
     </div>

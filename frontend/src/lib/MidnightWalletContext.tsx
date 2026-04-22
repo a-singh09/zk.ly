@@ -185,12 +185,10 @@ export function MidnightWalletProvider({ children }: { children: ReactNode }) {
           throw new Error("Wallet connection was rejected.");
         }
 
-        if (
-          connectionStatus.networkId &&
-          connectionStatus.networkId !== networkId
-        ) {
-          throw new Error(
-            `Lace wallet is connected to ${connectionStatus.networkId}. Switch to ${networkId} and retry.`,
+        const connectedNetworkId = connectionStatus.networkId ?? networkId;
+        if (connectedNetworkId !== networkId) {
+          setWalletError(
+            `Lace wallet is connected to ${connectedNetworkId}. Backend expects ${networkId}; on-chain transactions may fail until you switch networks.`,
           );
         }
 
@@ -207,7 +205,7 @@ export function MidnightWalletProvider({ children }: { children: ReactNode }) {
         }
 
         setWalletAddress(shielded.shieldedAddress);
-        setWalletNetwork(networkId);
+        setWalletNetwork(connectedNetworkId);
         return shielded.shieldedAddress;
       }
 

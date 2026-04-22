@@ -54,6 +54,10 @@ export const reviewerPolicies = new Map<string, ReviewerPolicyRecord>([
         clarity: 0.2,
         originality: 0.1,
       },
+      steps: [
+        "it should explain shielded transactions",
+        "it should be clearly documented",
+      ],
       maxTokens: 6000,
       timeoutMs: 12000,
       retryLimit: 1,
@@ -76,6 +80,10 @@ export const reviewerPolicies = new Map<string, ReviewerPolicyRecord>([
         evidenceCoverage: 0.25,
         novelty: 0.1,
       },
+      steps: [
+        "it should explain a core midnight concept",
+        "it should include practical implementation details",
+      ],
       maxTokens: 9000,
       timeoutMs: 15000,
       retryLimit: 2,
@@ -86,41 +94,7 @@ export const reviewerPolicies = new Map<string, ReviewerPolicyRecord>([
   ],
 ]);
 
-export const quests = new Map<string, QuestRecord>([
-  [
-    "quest_1",
-    {
-      id: "quest_1",
-      spaceId: "midnight",
-      name: "Write a Midnight ZK Tutorial",
-      description:
-        "Create an in-depth tutorial on Midnight's ZK proofs and selective disclosure.",
-      type: "blog",
-      policyId: "policy_2",
-      reward: 500,
-      creatorWallet: "admin",
-      createdAt: now,
-      updatedAt: now,
-      active: true,
-    },
-  ],
-  [
-    "quest_2",
-    {
-      id: "quest_2",
-      spaceId: "midnight",
-      name: "Deploy a Compact Contract",
-      description: "Deploy a working Compact contract to the Midnight testnet.",
-      type: "onchain",
-      policyId: undefined,
-      reward: 750,
-      creatorWallet: "admin",
-      createdAt: now,
-      updatedAt: now,
-      active: true,
-    },
-  ],
-]);
+export const quests = new Map<string, QuestRecord>();
 
 export function createId(prefix: string) {
   return `${prefix}_${randomUUID()}`;

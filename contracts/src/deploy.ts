@@ -121,6 +121,16 @@ function defaultWitnessesForContract(name: string) {
       get_freq_slots_required: (context: any) => [context.privateState, 0n],
       get_last_completion_slot: (context: any) => [context.privateState, 0n],
       get_current_slot: (context: any) => [context.privateState, 0n],
+      get_review_payload: (context: any) => [
+        context.privateState,
+        zeroBytes(256),
+      ],
+      get_commitment_payload: (context: any) => [
+        context.privateState,
+        zeroBytes(256),
+      ],
+      get_passed_flag: (context: any) => [context.privateState, false],
+      get_score_band: (context: any) => [context.privateState, 0n],
     };
   }
 

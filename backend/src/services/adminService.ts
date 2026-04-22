@@ -63,6 +63,21 @@ function normalizeDimensions(dimensions: Record<string, number>) {
   return Object.fromEntries(pairs);
 }
 
+function normalizeSteps(steps: string[] | undefined) {
+  const normalized = (steps ?? [])
+    .map((step) => step.trim())
+    .filter((step) => step.length > 0);
+
+  if (normalized.length === 0) {
+    return [
+      "it should explain shielded transactions",
+      "it should be clearly documented",
+    ];
+  }
+
+  return normalized;
+}
+
 export function createReviewerPolicy(
   payload: ReviewerPolicyCreateRequest,
 ): ReviewerPolicyRecord {
@@ -94,6 +109,7 @@ export function createReviewerPolicy(
         originality: 0.1,
       },
     ),
+    steps: normalizeSteps(payload.steps),
     maxTokens: Number(payload.maxTokens ?? 8000),
     timeoutMs: Number(payload.timeoutMs ?? 12000),
     retryLimit: Number(payload.retryLimit ?? 1),
@@ -118,6 +134,7 @@ export function updateReviewerPolicy(
     category: payload.category?.trim() || existing.category,
     scoreThreshold: Number(payload.scoreThreshold ?? existing.scoreThreshold),
     dimensions: nextDimensions,
+    steps: payload.steps ? normalizeSteps(payload.steps) : existing.steps,
     maxTokens: Number(payload.maxTokens ?? existing.maxTokens),
     timeoutMs: Number(payload.timeoutMs ?? existing.timeoutMs),
     retryLimit: Number(payload.retryLimit ?? existing.retryLimit),

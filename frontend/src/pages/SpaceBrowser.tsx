@@ -1,49 +1,36 @@
 import { Link } from "react-router-dom";
-import { Search, Filter, ShieldCheck, Users } from "lucide-react";
+import { Search, Filter, ShieldCheck, Users, Loader2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { getSpaces, type SpaceRecord } from "../lib/api";
 
-const seededSpaces: SpaceRecord[] = [
-  {
-    id: "midnight",
-    name: "Midnight Fellowship",
-    desc: "Reference space for the Midnight Network community builders and educators.",
-    members: 1420,
-    quests: 34,
-    createdAt: "2026-04-01T00:00:00.000Z",
-  },
-  {
-    id: "oblivion",
-    name: "Oblivion Protocol",
-    desc: "ZK-powered GDPR deletion services ecosystem.",
-    members: 890,
-    quests: 12,
-    createdAt: "2026-04-01T00:00:00.000Z",
-  },
-  {
-    id: "zkdonor",
-    name: "zkDonor Labs",
-    desc: "Medical logistics transparency platform.",
-    members: 340,
-    quests: 8,
-    createdAt: "2026-04-01T00:00:00.000Z",
-  },
-];
-
 export default function SpaceBrowser() {
-  const [spaces, setSpaces] = useState<SpaceRecord[]>(seededSpaces);
+  const [spaces, setSpaces] = useState<SpaceRecord[]>([]);
   const [query, setQuery] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     const loadSpaces = async () => {
+      setLoading(true);
+      setError(null);
       try {
         const response = await getSpaces();
-        if (!cancelled && response.items.length > 0) {
+        if (!cancelled) {
           setSpaces(response.items);
         }
-      } catch {
-        // Keep seeded demo data if the API is not running.
+      } catch (loadError) {
+        if (!cancelled) {
+          setError(
+            loadError instanceof Error
+              ? loadError.message
+              : "Could not load spaces",
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
     };
 
@@ -95,40 +82,50 @@ export default function SpaceBrowser() {
         </div>
       </div>
 
-      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-        {filteredSpaces.map((space) => (
-          <Link
-            key={space.id}
-            to={`/spaces/${space.id}`}
-            className="bg-[#161616] p-10 hover:bg-[#232323] transition-all group border border-white/10 hover:border-bright-blue/50 flex flex-col justify-between min-h-[320px]"
-          >
-            <div>
-              <div className="w-16 h-16 bg-[#0A0A0A] border border-white/10 flex items-center justify-center mb-8">
-                {space.id === "midnight" ? (
+      {loading ? (
+        <div className="border border-white/10 bg-[#161616] p-10 flex items-center justify-center gap-3 text-white/60 uppercase tracking-widest text-sm">
+          <Loader2 size={16} className="animate-spin" /> Loading spaces...
+        </div>
+      ) : error ? (
+        <div className="border border-red-500/30 bg-red-500/10 text-red-200 px-5 py-4 text-sm">
+          {error}
+        </div>
+      ) : filteredSpaces.length === 0 ? (
+        <div className="border border-white/10 bg-[#161616] p-10 text-white/60 text-sm">
+          No spaces found.
+        </div>
+      ) : (
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+          {filteredSpaces.map((space) => (
+            <Link
+              key={space.id}
+              to={`/spaces/${space.id}`}
+              className="bg-[#161616] p-10 hover:bg-[#232323] transition-all group border border-white/10 hover:border-bright-blue/50 flex flex-col justify-between min-h-[320px]"
+            >
+              <div>
+                <div className="w-16 h-16 bg-[#0A0A0A] border border-white/10 flex items-center justify-center mb-8">
                   <ShieldCheck className="text-bright-blue" size={32} />
-                ) : (
-                  <div className="w-8 h-8 bg-white/20" />
-                )}
+                </div>
+                <h3 className="text-2xl font-bold mb-4 font-heading uppercase tracking-wide group-hover:text-bright-blue transition-colors">
+                  {space.name}
+                </h3>
+                <p className="text-white/60 mb-8 leading-relaxed line-clamp-3">
+                  {space.desc}
+                </p>
               </div>
-              <h3 className="text-2xl font-bold mb-4 font-heading uppercase tracking-wide group-hover:text-bright-blue transition-colors">
-                {space.name}
-              </h3>
-              <p className="text-white/60 mb-8 leading-relaxed line-clamp-3">
-                {space.desc}
-              </p>
-            </div>
 
-            <div className="flex flex-wrap items-center gap-4 text-xs font-bold text-white/50 font-sans tracking-widest uppercase mt-4">
-              <span className="flex items-center gap-2 border border-white/10 px-4 py-2 bg-[#0A0A0A]">
-                <Users size={14} /> {space.members}
-              </span>
-              <span className="border border-white/10 px-4 py-2 bg-[#0A0A0A]">
-                {space.quests} Quests
-              </span>
-            </div>
-          </Link>
-        ))}
-      </div>
+              <div className="flex flex-wrap items-center gap-4 text-xs font-bold text-white/50 font-sans tracking-widest uppercase mt-4">
+                <span className="flex items-center gap-2 border border-white/10 px-4 py-2 bg-[#0A0A0A]">
+                  <Users size={14} /> {space.members}
+                </span>
+                <span className="border border-white/10 px-4 py-2 bg-[#0A0A0A]">
+                  {space.quests} Quests
+                </span>
+              </div>
+            </Link>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

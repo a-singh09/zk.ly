@@ -5,6 +5,12 @@ import {
   ShieldCheck,
   Share,
   ExternalLink,
+  CheckCircle,
+  AlertCircle,
+  Unlock,
+  Eye,
+  EyeOff,
+  Lock,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { getCommitment, type CommitmentResponse } from "../lib/api";
@@ -23,7 +29,7 @@ export default function CertExplorer() {
           setRecord(response);
         }
       } catch {
-        // Preserve static fallback UI when API data is unavailable.
+        // Keep page visible with generic placeholders when API data is unavailable.
       }
     };
 
@@ -33,14 +39,12 @@ export default function CertExplorer() {
     };
   }, [certId]);
 
-  const resolvedQuest =
-    record?.review?.questId ?? "Publish a technical blog/tutorial";
-  const resolvedSpace =
-    record?.review?.spaceId ?? "Midnight Fellowship · Q2 Sprint";
-  const resolvedXp = record?.review?.score ?? 250;
+  const resolvedQuest = record?.review?.questId ?? "Unknown quest";
+  const resolvedSpace = record?.review?.spaceId ?? "Unknown space";
+  const resolvedXp = record?.review?.score ?? 0;
   const resolvedAgent = record?.review
-    ? "zkquest-educator-v1 (mock ai)"
-    : "zkquest-educator-v1";
+    ? `zkquest-review-${record.review.reviewMode}`
+    : "agent-unavailable";
 
   return (
     <div className="w-full">
@@ -115,6 +119,32 @@ export default function CertExplorer() {
             </div>
 
             <div className="bg-[#0A0A0A] p-8 border border-white/10">
+              {/* ZK Proof mode badge */}
+              {record && (
+                <div
+                  className={`mb-6 border px-4 py-3 text-xs flex items-start gap-3 ${
+                    record.proofMode === "midnight"
+                      ? "border-emerald-500/40 bg-emerald-500/5 text-emerald-200"
+                      : "border-amber-400/30 bg-amber-500/5 text-amber-200"
+                  }`}
+                >
+                  {record.proofMode === "midnight" ? (
+                    <CheckCircle size={14} className="text-emerald-400 mt-0.5 shrink-0" />
+                  ) : (
+                    <AlertCircle size={14} className="text-amber-400 mt-0.5 shrink-0" />
+                  )}
+                  <div>
+                    <div className="font-bold uppercase tracking-widest text-[10px] mb-1">
+                      {record.proofMode === "midnight"
+                        ? "ZK Proof — Midnight Network"
+                        : "Local Commitment — Fallback Mode"}
+                    </div>
+                    <div className="text-white/60 text-[10px] leading-4">
+                      {record.chainNote}
+                    </div>
+                  </div>
+                </div>
+              )}
               <h3 className="font-bold uppercase tracking-widest mb-8 flex items-center gap-3 pb-4 border-b border-white/10">
                 <ShieldCheck className="text-bright-blue" size={24} />
                 Cryptographic Proofs
@@ -158,6 +188,58 @@ export default function CertExplorer() {
                 </li>
               </ul>
             </div>
+          </div>
+
+          {/* ZK Privacy Model Split */}
+          <div className="border border-white/10 bg-[#0A0A0A] mb-10">
+            <div className="px-6 py-4 border-b border-white/10 flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-white/60">
+              <Lock size={14} />
+              ZK Privacy Model
+            </div>
+            <div className="grid md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-white/5">
+              <div className="p-5">
+                <div className="flex items-center gap-2 text-emerald-400 mb-3 text-[10px] font-bold uppercase tracking-widest">
+                  <Unlock size={10} /> Public on-chain
+                </div>
+                <ul className="space-y-1 text-xs text-white/60">
+                  <li>• quest_id: <span className="font-mono text-white/80">{record?.review?.questId ?? "—"}</span></li>
+                  <li>• xp_awarded: <span className="font-mono text-white/80">{resolvedXp}</span></li>
+                  <li>• status: <span className="font-mono text-emerald-300">VERIFIED</span></li>
+                  <li>• completer_key (pseudonymous hash)</li>
+                </ul>
+              </div>
+              <div className="p-5">
+                <div className="flex items-center gap-2 text-blue-400 mb-3 text-[10px] font-bold uppercase tracking-widest">
+                  <Eye size={10} /> Selectively disclosed
+                </div>
+                <ul className="space-y-1 text-xs text-white/60">
+                  {record?.disclosure && (
+                    <>
+                      <li>• passed_flag: <span className={`font-mono ${record.disclosure.disclosed.passed ? "text-emerald-300" : "text-amber-300"}`}>{String(record.disclosure.disclosed.passed)}</span></li>
+                      <li>• score_band: <span className="font-mono text-white/80">{record.disclosure.disclosed.scoreBand}</span></li>
+                    </>
+                  )}
+                  <li>• evidence_class: <span className="font-mono text-white/80">AI_SCORE</span></li>
+                </ul>
+              </div>
+              <div className="p-5">
+                <div className="flex items-center gap-2 text-white/30 mb-3 text-[10px] font-bold uppercase tracking-widest">
+                  <EyeOff size={10} /> ZK private (never on-chain)
+                </div>
+                <ul className="space-y-1 text-xs text-white/50">
+                  <li>• Raw AI score ({record?.review?.score ?? "—"})</li>
+                  <li>• Full analysis text</li>
+                  <li>• Raw wallet address</li>
+                  <li>• Quest criteria bytes</li>
+                </ul>
+              </div>
+            </div>
+            {record?.commitmentHash && (
+              <div className="px-6 py-3 border-t border-white/10 font-mono text-[10px] text-white/40 flex items-start gap-2 break-all">
+                <span className="text-white/30 shrink-0">commitment_hash:</span>
+                {record.commitmentHash}
+              </div>
+            )}
           </div>
 
           <div className="bg-[#0000FE]/5 border border-bright-blue/20 p-8">

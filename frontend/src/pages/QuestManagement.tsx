@@ -1,13 +1,26 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, Loader2, CheckCircle2, AlertTriangle } from "lucide-react";
+import Editor from "react-simple-code-editor";
+import Prism from "prismjs";
+import "prismjs/components/prism-json";
 import {
   getReviewerPolicies,
   createQuest,
   updateQuest,
   getQuest,
+  type QuestTrack,
+  type RewardMode,
   type ReviewerPolicyRecord,
 } from "../lib/api";
+import { useMidnightWallet } from "../lib/MidnightWalletContext";
+
+const CodeEditor =
+  (Editor as typeof Editor & { default?: typeof Editor }).default ?? Editor;
+
+function highlightJson(code: string) {
+  return Prism.highlight(code, Prism.languages.json, "json");
+}
 
 export default function QuestManagement() {
   const { spaceId, questId } = useParams<{
@@ -28,9 +41,30 @@ export default function QuestManagement() {
   const [type, setType] = useState<
     "blog" | "github" | "social" | "onchain" | "custom"
   >("blog");
+  const [track, setTrack] = useState<QuestTrack>("builder");
   const [policyId, setPolicyId] = useState<string>("");
   const [reward, setReward] = useState(100);
+  const [rewardMode, setRewardMode] = useState<RewardMode>("xp-only");
+  const [escrowContractAddress, setEscrowContractAddress] = useState("");
+  const [escrowAmount, setEscrowAmount] = useState(0);
+  const [criteriaJson, setCriteriaJson] = useState(
+    JSON.stringify(
+      {
+        technicalDepth: 0.4,
+        factualAccuracy: 0.3,
+        clarity: 0.2,
+        originality: 0.1,
+        steps: [
+          "It should explain shielded transactions clearly",
+          "It should be clearly documented with working examples",
+        ],
+      },
+      null,
+      2,
+    ),
+  );
   const [active, setActive] = useState(true);
+  const { isConnected, walletAddress, connectWallet } = useMidnightWallet();
 
   useEffect(() => {
     const loadData = async () => {
@@ -45,8 +79,24 @@ export default function QuestManagement() {
           setName(questResponse.name);
           setDescription(questResponse.description);
           setType(questResponse.type);
+          setTrack(questResponse.track);
           setPolicyId(questResponse.policyId || "");
           setReward(questResponse.reward);
+          setRewardMode(questResponse.rewardMode);
+          setEscrowContractAddress(questResponse.escrowContractAddress || "");
+          setEscrowAmount(questResponse.escrowAmount || 0);
+          setCriteriaJson(
+            JSON.stringify(
+              questResponse.criteriaJson ?? {
+                technicalDepth: 0.4,
+                factualAccuracy: 0.3,
+                clarity: 0.2,
+                originality: 0.1,
+              },
+              null,
+              2,
+            ),
+          );
           setActive(questResponse.active);
         }
       } catch (err) {
@@ -71,38 +121,107 @@ export default function QuestManagement() {
       return;
     }
 
+    if (rewardMode === "escrow-auto") {
+      if (!escrowContractAddress.trim()) {
+        setError("Escrow contract address is required for escrow-auto mode.");
+        return;
+      }
+      if (escrowAmount <= 0) {
+        setError("Escrow amount must be greater than 0 for escrow-auto mode.");
+        return;
+      }
+    }
+
     setSaving(true);
     try {
+      console.info("[quest:create-ui] submitting quest payload", {
+        isEditing,
+        spaceId,
+        rewardMode,
+      });
+
+      const parsedCriteria = JSON.parse(criteriaJson) as Record<
+        string,
+        unknown
+      >;
+
       if (isEditing && questId) {
         await updateQuest(questId, {
           name: name.trim(),
           description: description.trim(),
           type,
+          track,
           policyId: policyId || undefined,
           reward,
+          rewardMode,
+          escrowContractAddress:
+            rewardMode === "escrow-auto"
+              ? escrowContractAddress.trim()
+              : undefined,
+          escrowAmount: rewardMode === "escrow-auto" ? escrowAmount : undefined,
+          criteriaJson: parsedCriteria,
           active,
         });
         setSuccess("Quest updated successfully!");
         setTimeout(() => navigate(`/spaces/${spaceId}`), 1500);
       } else {
+        const creatorWallet =
+          isConnected && walletAddress ? walletAddress : await connectWallet();
+
         await createQuest({
           spaceId,
           name: name.trim(),
           description: description.trim(),
           type,
+          track,
           policyId: policyId || undefined,
           reward,
+          rewardMode,
+          escrowContractAddress:
+            rewardMode === "escrow-auto"
+              ? escrowContractAddress.trim()
+              : undefined,
+          escrowAmount: rewardMode === "escrow-auto" ? escrowAmount : undefined,
+          criteriaJson: parsedCriteria,
+          creatorWallet,
+          publishOnChain: false,
         });
-        setSuccess("Quest created successfully!");
+        setSuccess(
+          "Quest created successfully. Publish it on-chain from the quest list.",
+        );
         setName("");
         setDescription("");
         setType("blog");
+        setTrack("builder");
         setPolicyId("");
         setReward(100);
+        setRewardMode("xp-only");
+        setEscrowContractAddress("");
+        setEscrowAmount(0);
+        setCriteriaJson(
+          JSON.stringify(
+            {
+              technicalDepth: 0.4,
+              factualAccuracy: 0.3,
+              clarity: 0.2,
+              originality: 0.1,
+              steps: [
+                "It should explain shielded transactions clearly",
+                "It should be clearly documented with working examples",
+              ],
+            },
+            null,
+            2,
+          ),
+        );
         setTimeout(() => navigate(`/spaces/${spaceId}`), 1500);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save quest");
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Failed to save quest. Ensure criteria JSON is valid.",
+      );
     } finally {
       setSaving(false);
     }
@@ -203,6 +322,24 @@ export default function QuestManagement() {
 
                 <div>
                   <label className="block text-sm font-bold uppercase tracking-widest text-white/80 mb-3">
+                    Category Track
+                  </label>
+                  <select
+                    value={track}
+                    onChange={(e) => setTrack(e.target.value as QuestTrack)}
+                    className="w-full bg-[#0A0A0A] border border-white/10 p-4 outline-none focus:border-bright-blue text-white transition-colors"
+                  >
+                    <option value="builder">Builder Track</option>
+                    <option value="educator">Educator Track</option>
+                    <option value="advocate">Advocate Track</option>
+                    <option value="community-leadership">
+                      Community Leadership Track
+                    </option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-bold uppercase tracking-widest text-white/80 mb-3">
                     Reward (XP)
                   </label>
                   <input
@@ -214,6 +351,109 @@ export default function QuestManagement() {
                     min="0"
                     className="w-full bg-[#0A0A0A] border border-white/10 p-4 outline-none focus:border-bright-blue text-white transition-colors"
                   />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-bold uppercase tracking-widest text-white/80 mb-3">
+                    Reward Mechanism
+                  </label>
+                  <select
+                    value={rewardMode}
+                    onChange={(e) =>
+                      setRewardMode(e.target.value as RewardMode)
+                    }
+                    className="w-full bg-[#0A0A0A] border border-white/10 p-4 outline-none focus:border-bright-blue text-white transition-colors"
+                  >
+                    <option value="xp-only">XP Only</option>
+                    <option value="escrow-auto">
+                      Automatic Reward via Escrow Contract
+                    </option>
+                  </select>
+                </div>
+              </div>
+
+              {rewardMode === "escrow-auto" && (
+                <div className="grid md:grid-cols-2 gap-6">
+                  <div>
+                    <label className="block text-sm font-bold uppercase tracking-widest text-white/80 mb-3">
+                      Escrow Contract Address
+                    </label>
+                    <input
+                      type="text"
+                      value={escrowContractAddress}
+                      onChange={(e) => setEscrowContractAddress(e.target.value)}
+                      placeholder="0x... or contract address"
+                      className="w-full bg-[#0A0A0A] border border-white/10 p-4 outline-none focus:border-bright-blue text-white placeholder-white/40 transition-colors"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-bold uppercase tracking-widest text-white/80 mb-3">
+                      Escrow Amount
+                    </label>
+                    <input
+                      type="number"
+                      value={escrowAmount}
+                      onChange={(e) =>
+                        setEscrowAmount(
+                          Math.max(0, parseInt(e.target.value) || 0),
+                        )
+                      }
+                      min="0"
+                      className="w-full bg-[#0A0A0A] border border-white/10 p-4 outline-none focus:border-bright-blue text-white transition-colors"
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <label className="block text-sm font-bold uppercase tracking-widest text-white/80">
+                    Criteria JSON
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setCriteriaJson(
+                        JSON.stringify(
+                          {
+                            technicalDepth: 0.4,
+                            factualAccuracy: 0.3,
+                            clarity: 0.2,
+                            originality: 0.1,
+                            steps: [
+                              "It should explain shielded transactions clearly",
+                              "It should be clearly documented with working examples",
+                            ],
+                          },
+                          null,
+                          2,
+                        ),
+                      )
+                    }
+                    className="text-[10px] px-2 py-1 border border-white/20 hover:border-bright-blue hover:text-bright-blue transition-colors"
+                  >
+                    Reset Template
+                  </button>
+                </div>
+                <div className="border border-white/10 bg-[#0A0A0A]">
+                  <div className="px-3 py-1.5 border-b border-white/10 text-[10px] uppercase tracking-widest text-white/30 font-mono">
+                    criteria.json — stored in Midnight private state, commitment
+                    hash on-chain
+                  </div>
+                  <CodeEditor
+                    value={criteriaJson}
+                    onValueChange={(code) => setCriteriaJson(code)}
+                    highlight={highlightJson}
+                    padding={12}
+                    textareaClassName="admin-json-editor-textarea"
+                    className="admin-json-editor min-h-[180px] text-xs font-mono"
+                  />
+                  <div className="px-3 py-2 border-t border-white/10 text-[10px] text-white/30">
+                    <span className="text-white/50">Weights</span>:
+                    technicalDepth, factualAccuracy, clarity, originality (must
+                    sum to 1.0) ·<span className="text-white/50"> steps</span>:
+                    string array of acceptance requirements
+                  </div>
                 </div>
               </div>
 

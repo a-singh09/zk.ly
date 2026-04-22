@@ -5,6 +5,7 @@ import {
   getSpaces,
   getQuestsBySpace,
   deleteQuest,
+  publishQuestOnChain,
   type SpaceRecord,
   type QuestRecord,
 } from "../lib/api";
@@ -18,6 +19,7 @@ export default function SpaceDetail() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [publishing, setPublishing] = useState<string | null>(null);
 
   useEffect(() => {
     const loadData = async () => {
@@ -61,6 +63,21 @@ export default function SpaceDetail() {
       setError(err instanceof Error ? err.message : "Failed to delete quest");
     } finally {
       setDeleting(null);
+    }
+  };
+
+  const handlePublishQuest = async (questId: string) => {
+    setError(null);
+    setPublishing(questId);
+    try {
+      const updated = await publishQuestOnChain(questId);
+      setQuests((prev) => prev.map((q) => (q.id === questId ? updated : q)));
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to publish quest on-chain",
+      );
+    } finally {
+      setPublishing(null);
     }
   };
 
@@ -183,9 +200,42 @@ export default function SpaceDetail() {
                         Type: <span className="font-mono">{quest.type}</span>
                       </span>
                       <span className="border border-white/10 px-3 py-1 bg-[#0A0A0A] text-white/80">
+                        Track: <span className="font-mono">{quest.track}</span>
+                      </span>
+                      <span className="border border-white/10 px-3 py-1 bg-[#0A0A0A] text-white/80">
                         Reward:{" "}
                         <span className="font-mono">{quest.reward}</span> XP
                       </span>
+                      <span className="border border-white/10 px-3 py-1 bg-[#0A0A0A] text-white/80">
+                        Reward Mode:{" "}
+                        <span className="font-mono">{quest.rewardMode}</span>
+                      </span>
+                      {quest.onChainQuestId && (
+                        <span className="border border-white/10 px-3 py-1 bg-[#0A0A0A] text-white/80">
+                          On-Chain ID:{" "}
+                          <span className="font-mono">
+                            {quest.onChainQuestId}
+                          </span>
+                        </span>
+                      )}
+                      <span
+                        className={`border px-3 py-1 ${
+                          quest.onChainMode === "midnight"
+                            ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+                            : "border-amber-500/30 bg-amber-500/10 text-amber-300"
+                        }`}
+                      >
+                        Chain:{" "}
+                        {quest.onChainMode === "midnight"
+                          ? "Midnight"
+                          : "Local Fallback"}
+                      </span>
+                      {quest.onChainMode !== "midnight" &&
+                        quest.onChainReason && (
+                          <span className="border border-amber-400/20 px-3 py-1 bg-amber-500/5 text-amber-200 max-w-full break-all">
+                            {quest.onChainReason}
+                          </span>
+                        )}
                       {quest.policyId && (
                         <span className="border border-bright-blue/30 px-3 py-1 bg-bright-blue/10 text-bright-blue">
                           Policy:{" "}
@@ -204,6 +254,16 @@ export default function SpaceDetail() {
                     </div>
                   </div>
                   <div className="flex gap-2">
+                    {quest.onChainMode !== "midnight" && (
+                      <button
+                        onClick={() => handlePublishQuest(quest.id)}
+                        disabled={publishing === quest.id}
+                        className="px-3 border border-emerald-500/40 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-xs font-bold uppercase tracking-widest"
+                        title="Publish quest to Midnight"
+                      >
+                        {publishing === quest.id ? "Publishing..." : "Publish"}
+                      </button>
+                    )}
                     <Link
                       to={`/spaces/${spaceId}/quests/${quest.id}/edit`}
                       className="p-3 border border-white/10 bg-[#0A0A0A] text-white/80 hover:text-bright-blue hover:border-bright-blue transition-colors"

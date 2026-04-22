@@ -7,11 +7,14 @@ import {
   Loader2,
   LogOut,
   Wallet,
+  Server,
 } from "lucide-react";
 import {
   truncateAddress,
   useMidnightWallet,
 } from "../lib/MidnightWalletContext";
+import { getMidnightHealth, type MidnightHealthStatus } from "../lib/api";
+import { useEffect, useState } from "react";
 
 export default function Sidebar() {
   const { pathname } = useLocation();
@@ -22,6 +25,18 @@ export default function Sidebar() {
     connectWallet,
     disconnectWallet,
   } = useMidnightWallet();
+  const [health, setHealth] = useState<MidnightHealthStatus | null>(null);
+
+  useEffect(() => {
+    const fetchHealth = () => {
+      getMidnightHealth()
+        .then(setHealth)
+        .catch(() => setHealth(null));
+    };
+    fetchHealth();
+    const interval = setInterval(fetchHealth, 30_000);
+    return () => clearInterval(interval);
+  }, []);
 
   const navItems = [
     { label: "Explore", icon: <Compass size={22} />, path: "/spaces" },
@@ -72,7 +87,33 @@ export default function Sidebar() {
         })}
       </nav>
 
-      <div className="p-4 mt-auto">
+      <div className="p-4 mt-auto space-y-3">
+        {/* Midnight network status pill */}
+        {health && (
+          <div
+            className={`hidden lg:flex items-center gap-2 px-3 py-2 border text-[10px] font-mono ${
+              health.midnight.enabled
+                ? "border-emerald-500/30 bg-emerald-500/5 text-emerald-400"
+                : "border-amber-400/20 bg-amber-500/5 text-amber-400"
+            }`}
+          >
+            <Server size={10} />
+            <div className="flex-1 min-w-0">
+              <div className="font-bold uppercase tracking-widest text-[9px] mb-0.5">
+                Midnight
+              </div>
+              <div className="text-white/50 text-[9px] truncate">
+                {health.midnight.enabled ? "ZK proofs enabled" : "Fallback mode"}
+              </div>
+            </div>
+            <div
+              className={`w-2 h-2 rounded-full ${
+                health.midnight.enabled ? "bg-emerald-400" : "bg-amber-400"
+              }`}
+            />
+          </div>
+        )}
+
         <div className="lg:hidden">
           {isConnected ? (
             <button

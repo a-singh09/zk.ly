@@ -2,12 +2,14 @@ pragma language_version >= 0.22;
 import CompactStandardLibrary;
 
 export enum QuestStatus { ACTIVE, PAUSED, EXPIRED, CAP_REACHED }
+export enum RewardMode { XP_ONLY, ESCROW_AUTOMATIC }
 
 export struct QuestDefinition {
   space_id: Bytes<32>;
   sprint_id: Bytes<32>;
   creator_key: Bytes<32>;
   quest_type: Bytes<8>;
+  track_tag: Bytes<8>;
   criteria_commitment: Bytes<32>;
   freq_slots: Uint<64>;
   max_completions: Uint<32>;
@@ -15,6 +17,9 @@ export struct QuestDefinition {
   expires_at_slot: Uint<64>;
   status: QuestStatus;
   xp_value: Uint<16>;
+  reward_mode: RewardMode;
+  escrow_contract: Bytes<32>;
+  escrow_amount: Uint<64>;
 }
 
 export ledger quests: Map<Bytes<32>, QuestDefinition>;
@@ -34,10 +39,14 @@ export circuit create_quest(
   space_id: Bytes<32>,
   sprint_id: Bytes<32>,
   quest_type: Bytes<8>,
+  track_tag: Bytes<8>,
   freq_slots: Uint<64>,
   max_completions: Uint<32>,
   expires_at_slot: Uint<64>,
   xp_value: Uint<16>,
+  reward_mode: RewardMode,
+  escrow_contract: Bytes<32>,
+  escrow_amount: Uint<64>,
   timestamp: Bytes<32>
 ): Bytes<32> {
   const sk = caller_secret_key();
@@ -52,18 +61,27 @@ export circuit create_quest(
   ]);
   const public_quest_id = disclose(quest_id);
 
+  assert(
+    reward_mode == RewardMode.XP_ONLY || escrow_amount > 0,
+    "Escrow amount required for automatic escrow rewards"
+  );
+
   quests.insert(public_quest_id, QuestDefinition {
     space_id: disclose(space_id),
     sprint_id: disclose(sprint_id),
     creator_key: disclose(creator_key),
     quest_type: disclose(quest_type),
+    track_tag: disclose(track_tag),
     criteria_commitment: disclose(criteria_commitment),
     freq_slots: disclose(freq_slots),
     max_completions: disclose(max_completions),
     completion_count: 0,
     expires_at_slot: disclose(expires_at_slot),
     status: disclose(QuestStatus.ACTIVE),
-    xp_value: disclose(xp_value)
+    xp_value: disclose(xp_value),
+    reward_mode: disclose(reward_mode),
+    escrow_contract: disclose(escrow_contract),
+    escrow_amount: disclose(escrow_amount)
   });
 
   quest_count.increment(1);
@@ -82,6 +100,7 @@ export circuit increment_completion(quest_id: Bytes<32>): [] {
     sprint_id: rec.sprint_id,
     creator_key: rec.creator_key,
     quest_type: rec.quest_type,
+    track_tag: rec.track_tag,
     criteria_commitment: rec.criteria_commitment,
     freq_slots: rec.freq_slots,
     max_completions: rec.max_completions,
@@ -92,6 +111,9 @@ export circuit increment_completion(quest_id: Bytes<32>): [] {
       ? QuestStatus.CAP_REACHED
       : rec.status
     ),
-    xp_value: rec.xp_value
+    xp_value: rec.xp_value,
+    reward_mode: rec.reward_mode,
+    escrow_contract: rec.escrow_contract,
+    escrow_amount: rec.escrow_amount
   });
 }

@@ -5,6 +5,14 @@ export interface ReviewRequest {
   artifactText?: string;
 }
 
+export type QuestTrack =
+  | "builder"
+  | "educator"
+  | "advocate"
+  | "community-leadership";
+
+export type RewardMode = "xp-only" | "escrow-auto";
+
 export interface CommitmentRequest {
   reviewId?: string;
   walletAddress?: string;
@@ -44,6 +52,7 @@ export interface ReviewerPolicyCreateRequest {
   category?: string;
   scoreThreshold?: number;
   dimensions?: Record<string, number>;
+  steps?: string[];
   maxTokens?: number;
   timeoutMs?: number;
   retryLimit?: number;
@@ -59,6 +68,8 @@ export interface ReviewRecord {
   analysisMessage: string;
   spaceId: string;
   questId: string;
+  policyId?: string;
+  track?: QuestTrack;
   artifactUrl: string;
   artifactText?: string;
   score: number;
@@ -81,7 +92,16 @@ export interface CommitmentRecord {
   walletAddress: string;
   authorizationMode: string;
   commitmentHash: string;
+  reviewCommitmentHash?: string;
+  selectiveDisclosureHash?: string;
+  onChainReviewCommitmentHash?: string;
+  onChainCommitmentCommitmentHash?: string;
+  onChainCertificateId?: string;
+  onChainQuestId?: string;
+  onChainTxId?: string;
+  proofMode: "mock" | "midnight";
   status: "authorized" | "pending-chain";
+  chainNote?: string;
   createdAt: string;
 }
 
@@ -101,9 +121,16 @@ export interface DisclosureRecord {
   questId: string;
   reviewId: string;
   commitmentId: string;
+  track?: QuestTrack;
   artifactUrl: string;
   evidenceHash: string;
   commitmentHash: string;
+  reviewCommitmentHash?: string;
+  selectiveDisclosureHash?: string;
+  onChainReviewCommitmentHash?: string;
+  onChainCommitmentCommitmentHash?: string;
+  onChainCertificateId?: string;
+  onChainTxId?: string;
   disclosed: {
     passed: boolean;
     scoreBand: string;
@@ -134,6 +161,7 @@ export interface ReviewerPolicyRecord {
   category: string;
   scoreThreshold: number;
   dimensions: Record<string, number>;
+  steps: string[];
   maxTokens: number;
   timeoutMs: number;
   retryLimit: number;
@@ -148,8 +176,18 @@ export interface QuestRecord {
   name: string;
   description: string;
   type: "blog" | "github" | "social" | "onchain" | "custom";
+  track: QuestTrack;
   policyId?: string;
   reward: number;
+  rewardMode: RewardMode;
+  escrowContractAddress?: string;
+  escrowAmount?: number;
+  criteriaJson?: Record<string, unknown>;
+  onChainQuestId?: string;
+  onChainCriteriaCommitment?: string;
+  onChainTxId?: string;
+  onChainMode?: "midnight" | "mock";
+  onChainReason?: string;
   creatorWallet?: string;
   createdAt: string;
   updatedAt: string;
@@ -161,16 +199,27 @@ export interface QuestCreateRequest {
   name?: string;
   description?: string;
   type?: string;
+  track?: QuestTrack;
   policyId?: string;
   reward?: number;
+  rewardMode?: RewardMode;
+  escrowContractAddress?: string;
+  escrowAmount?: number;
+  criteriaJson?: Record<string, unknown>;
   creatorWallet?: string;
+  publishOnChain?: boolean;
 }
 
 export interface QuestUpdateRequest {
   name?: string;
   description?: string;
   type?: string;
+  track?: QuestTrack;
   policyId?: string;
   reward?: number;
+  rewardMode?: RewardMode;
+  escrowContractAddress?: string;
+  escrowAmount?: number;
+  criteriaJson?: Record<string, unknown>;
   active?: boolean;
 }

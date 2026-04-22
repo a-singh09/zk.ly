@@ -4,6 +4,7 @@ import type {
   CommitmentRecord,
   CommitmentRequest,
   DisclosureRecord,
+  QuestTrack,
   ReviewRecord,
   ReviewRequest,
 } from "../domain/models.js";
@@ -89,7 +90,7 @@ async function scoreWithOpenAI(
 
   const tags = Array.isArray(article.tag_list)
     ? article.tag_list.join(", ")
-    : (article.tag_list ?? "");
+    : article.tag_list ?? "";
   const body = (article.body_markdown ?? "").slice(0, 6000);
 
   const prompt = `You are an expert blog post reviewer for a developer quest platform.
@@ -175,6 +176,8 @@ function buildReview(params: {
   reviewId: string;
   spaceId: string;
   questId: string;
+  policyId?: string;
+  track?: QuestTrack;
   artifactUrl: string;
   artifactText?: string;
   threshold: number;
@@ -195,6 +198,8 @@ function buildReview(params: {
     analysisMessage,
     spaceId,
     questId,
+    policyId: params.policyId,
+    track: params.track,
     artifactUrl,
     artifactText,
     score,
@@ -207,14 +212,19 @@ function buildReview(params: {
   };
 }
 
-export async function createReview(input: ReviewRequest): Promise<ReviewRecord> {
+export async function createReview(
+  input: ReviewRequest & {
+    threshold?: number;
+    policyId?: string;
+    track?: QuestTrack;
+  },
+): Promise<ReviewRecord> {
   const reviewId = createId("review");
-  const spaceId = input.spaceId?.trim() || "midnight";
-  const questId = input.questId?.trim() || "blog-quest-demo";
-  const artifactUrl =
-    input.artifactUrl?.trim() || "https://dev.to/midnight/demo";
+  const spaceId = input.spaceId?.trim() || "default-space";
+  const questId = input.questId?.trim() || "default-quest";
+  const artifactUrl = input.artifactUrl?.trim() || "https://dev.to";
   const artifactText = input.artifactText?.trim();
-  const threshold = 70;
+  const threshold = Number(input.threshold ?? 70);
 
   const article = await fetchDevToArticle(artifactUrl);
   const openAiScoring = article ? await scoreWithOpenAI(article) : null;
@@ -224,6 +234,8 @@ export async function createReview(input: ReviewRequest): Promise<ReviewRecord> 
       reviewId,
       spaceId,
       questId,
+      policyId: input.policyId,
+      track: input.track,
       artifactUrl,
       artifactText,
       threshold,
@@ -236,6 +248,8 @@ export async function createReview(input: ReviewRequest): Promise<ReviewRecord> 
     reviewId,
     spaceId,
     questId,
+    policyId: input.policyId,
+    track: input.track,
     artifactUrl,
     artifactText,
     threshold,
@@ -258,12 +272,40 @@ export function createCommitment(
     )
     .digest("hex");
 
+  const reviewCommitmentHash = createHash("sha256")
+    .update(
+      JSON.stringify({
+        reviewId: review.reviewId,
+        reviewMode: review.reviewMode,
+        score: review.score,
+        threshold: review.threshold,
+        passed: review.passed,
+        breakdown: review.breakdown,
+        analysisMessage: review.analysisMessage,
+        artifactUrl: review.artifactUrl,
+      }),
+    )
+    .digest("hex");
+
+  const selectiveDisclosureHash = createHash("sha256")
+    .update(
+      JSON.stringify({
+        passed: review.passed,
+        scoreBand: toScoreBand(review.score),
+        reviewedAt: review.reviewedAt,
+      }),
+    )
+    .digest("hex");
+
   return {
     commitmentId,
     reviewId: review.reviewId,
     walletAddress,
     authorizationMode,
     commitmentHash: `0x${commitmentHash}`,
+    reviewCommitmentHash: `0x${reviewCommitmentHash}`,
+    selectiveDisclosureHash: `0x${selectiveDisclosureHash}`,
+    proofMode: "mock",
     status: "pending-chain",
     createdAt: new Date().toISOString(),
   };
@@ -279,9 +321,16 @@ export function toDisclosureRecord(
     questId: review.questId,
     reviewId: review.reviewId,
     commitmentId: commitment.commitmentId,
+    track: review.track,
     artifactUrl: review.artifactUrl,
     evidenceHash: review.evidenceHash,
     commitmentHash: commitment.commitmentHash,
+    reviewCommitmentHash: commitment.reviewCommitmentHash,
+    selectiveDisclosureHash: commitment.selectiveDisclosureHash,
+    onChainReviewCommitmentHash: commitment.onChainReviewCommitmentHash,
+    onChainCommitmentCommitmentHash: commitment.onChainCommitmentCommitmentHash,
+    onChainCertificateId: commitment.onChainCertificateId,
+    onChainTxId: commitment.onChainTxId,
     disclosed: {
       passed: review.passed,
       scoreBand: toScoreBand(review.score),

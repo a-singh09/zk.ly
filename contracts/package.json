@@ -4,7 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "compile": "compact compile contracts/hello-world.compact contracts/managed/hello-world",
+    "compile": "npm run compile:all",
+    "compile:all": "npm run compile:hello-world && npm run compile:quest-registry && npm run compile:completion-registry",
+    "compile:hello-world": "compact compile contracts/hello-world.compact contracts/managed/hello-world",
+    "compile:quest-registry": "compact compile contracts/quest-registry.compact contracts/managed/quest-registry",
+    "compile:completion-registry": "compact compile contracts/completion-registry.compact contracts/managed/completion-registry",
     "build": "tsc",
     "deploy": "tsx src/deploy.ts",
     "cli": "tsx src/cli.ts",

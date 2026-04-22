@@ -12,6 +12,10 @@ export struct CompletionCert {
   status: CompletionStatus;
   issued_at_slot: Uint<64>;
   xp_awarded: Uint<16>;
+  passed_flag: Boolean;
+  score_band: Uint<8>;
+  review_commitment: Bytes<32>;
+  commitment_commitment: Bytes<32>;
 }
 
 export ledger completions: Map<Bytes<32>, CompletionCert>;
@@ -26,6 +30,10 @@ witness get_min_score_threshold(): Uint<32>;
 witness get_freq_slots_required(): Uint<64>;
 witness get_last_completion_slot(): Uint<64>;
 witness get_current_slot(): Uint<64>;
+witness get_review_payload(): Bytes<256>;
+witness get_commitment_payload(): Bytes<256>;
+witness get_passed_flag(): Boolean;
+witness get_score_band(): Uint<8>;
 
 export circuit verify_completion(
   quest_id: Bytes<32>,
@@ -44,6 +52,10 @@ export circuit verify_completion(
   const freq_slots = get_freq_slots_required();
   const last_slot = get_last_completion_slot();
   const curr_slot = get_current_slot();
+  const review_payload = get_review_payload();
+  const commitment_payload = get_commitment_payload();
+  const passed_flag = get_passed_flag();
+  const score_band = get_score_band();
 
   const computed_commitment = persistentHash<Bytes<256>>(crit_bytes);
   assert(computed_commitment == on_chain_commitment, "Criteria mismatch");
@@ -64,24 +76,35 @@ export circuit verify_completion(
     "Frequency limit not met"
   );
 
-  const public_quest_id = disclose(quest_id);
-  const public_slot = disclose(curr_slot);
-  const slot_bytes = (public_slot as Field) as Bytes<32>;
+  assert(score_band <= 3, "Score band must be in range 0-3");
 
-  const cert_id = persistentHash<Vector<2, Bytes<32>>>([
+  const review_commitment = persistentHash<Bytes<256>>(review_payload);
+  const commitment_commitment = persistentHash<Bytes<256>>(commitment_payload);
+
+  const public_quest_id = disclose(quest_id);
+  const public_completer_key = disclose(completer_key);
+  const public_review_commitment = disclose(review_commitment);
+  const public_commitment_commitment = disclose(commitment_commitment);
+
+  const cert_id = persistentHash<Vector<3, Bytes<32>>>([
     public_quest_id,
-    slot_bytes
+    public_completer_key,
+    public_commitment_commitment
   ]);
 
   completions.insert(cert_id, CompletionCert {
-    quest_id: disclose(quest_id),
+    quest_id: public_quest_id,
     sprint_id: disclose(sprint_id),
     space_id: disclose(space_id),
-    completer_key: disclose(completer_key),
+    completer_key: public_completer_key,
     evidence_class: disclose(evid_class),
     status: disclose(CompletionStatus.VERIFIED),
     issued_at_slot: disclose(curr_slot),
-    xp_awarded: disclose(xp_value)
+    xp_awarded: disclose(xp_value),
+    passed_flag: disclose(passed_flag),
+    score_band: disclose(score_band),
+    review_commitment: public_review_commitment,
+    commitment_commitment: public_commitment_commitment
   });
 
   return disclose(cert_id);
