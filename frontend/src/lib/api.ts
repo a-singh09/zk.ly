@@ -32,6 +32,9 @@ export interface CommitmentResponse {
   reviewId: string;
   walletAddress: string;
   authorizationMode: string;
+  walletApprovalSignature?: string;
+  walletApprovalData?: string;
+  walletApprovalVerifyingKey?: string;
   commitmentHash: string;
   reviewCommitmentHash?: string;
   selectiveDisclosureHash?: string;
@@ -143,8 +146,11 @@ export interface QuestRecord {
   onChainQuestId?: string;
   onChainCriteriaCommitment?: string;
   onChainTxId?: string;
-  onChainMode?: "midnight" | "mock";
+  onChainMode?: "midnight" | "mock" | "wallet-popup";
   onChainReason?: string;
+  walletApprovalSignature?: string;
+  walletApprovalData?: string;
+  walletApprovalVerifyingKey?: string;
   creatorWallet?: string;
   createdAt: string;
   updatedAt: string;
@@ -232,6 +238,21 @@ export function authorizeReviewCommitment(payload: {
   reviewId: string;
   walletAddress: string;
   authorizationMode?: string;
+  walletApprovalSignature?: string;
+  walletApprovalData?: string;
+  walletApprovalVerifyingKey?: string;
+  /** On-chain cert ID from the DApp connector verify_completion intent */
+  onChainCertId?: string;
+  /** Full commitment hash derived client-side */
+  onChainCommitmentHash?: string;
+  /** Review payload commitment hash */
+  onChainReviewCommitmentHash?: string;
+  /** Tx ID (hash of wallet signature) */
+  onChainTxId?: string;
+  /** How the on-chain interaction was performed */
+  onChainMode?: "midnight" | "mock" | "wallet-popup";
+  /** Human-readable chain note */
+  chainNote?: string;
 }) {
   return requestJson<CommitmentResponse>("/api/commitments", {
     method: "POST",
@@ -372,6 +393,14 @@ export function createQuest(payload: {
   criteriaJson?: Record<string, unknown>;
   creatorWallet?: string;
   publishOnChain?: boolean;
+  /** On-chain quest ID from the DApp connector create_quest circuit call. */
+  onChainQuestId?: string;
+  /** Transaction ID returned after wallet submission. */
+  onChainTxId?: string;
+  /** How the on-chain interaction was performed. */
+  onChainMode?: "midnight" | "mock" | "wallet-popup";
+  /** Human-readable note about the on-chain status. */
+  onChainReason?: string;
 }) {
   return requestJson<QuestRecord>("/api/quests", {
     method: "POST",
@@ -379,9 +408,18 @@ export function createQuest(payload: {
   });
 }
 
-export function publishQuestOnChain(questId: string) {
+export function publishQuestOnChain(
+  questId: string,
+  payload: {
+    walletAddress: string;
+    walletApprovalSignature: string;
+    walletApprovalData?: string;
+    walletApprovalVerifyingKey?: string;
+  },
+) {
   return requestJson<QuestRecord>(`/api/quests/${questId}/publish`, {
     method: "POST",
+    body: JSON.stringify(payload),
   });
 }
 
@@ -473,6 +511,7 @@ export interface MidnightHealthStatus {
     reason?: string;
     questContractAddress?: string;
     completionContractAddress?: string;
+    txSubmissionMode?: "backend-operator" | "wallet-popup";
   };
   spaces: number;
   reviews: number;

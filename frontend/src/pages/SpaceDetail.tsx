@@ -9,10 +9,13 @@ import {
   type SpaceRecord,
   type QuestRecord,
 } from "../lib/api";
+import { useMidnightWallet } from "../lib/MidnightWalletContext";
 
 export default function SpaceDetail() {
   const { spaceId } = useParams<{ spaceId: string }>();
   const navigate = useNavigate();
+  const { isConnected, walletAddress, connectWallet, signWalletAuthorization } =
+    useMidnightWallet();
 
   const [space, setSpace] = useState<SpaceRecord | null>(null);
   const [quests, setQuests] = useState<QuestRecord[]>([]);
@@ -70,7 +73,25 @@ export default function SpaceDetail() {
     setError(null);
     setPublishing(questId);
     try {
-      const updated = await publishQuestOnChain(questId);
+      const currentAddress =
+        isConnected && walletAddress ? walletAddress : await connectWallet();
+
+      const approvalPayload = JSON.stringify({
+        action: "publish-quest",
+        questId,
+        spaceId: spaceId ?? "unknown",
+        walletAddress: currentAddress,
+        issuedAt: new Date().toISOString(),
+      });
+
+      const signature = await signWalletAuthorization(approvalPayload);
+
+      const updated = await publishQuestOnChain(questId, {
+        walletAddress: currentAddress,
+        walletApprovalSignature: signature.signature,
+        walletApprovalData: signature.data,
+        walletApprovalVerifyingKey: signature.verifyingKey,
+      });
       setQuests((prev) => prev.map((q) => (q.id === questId ? updated : q)));
     } catch (err) {
       setError(
@@ -222,13 +243,17 @@ export default function SpaceDetail() {
                         className={`border px-3 py-1 ${
                           quest.onChainMode === "midnight"
                             ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
-                            : "border-amber-500/30 bg-amber-500/10 text-amber-300"
+                            : quest.onChainMode === "wallet-popup"
+                              ? "border-blue-500/30 bg-blue-500/10 text-blue-200"
+                              : "border-amber-500/30 bg-amber-500/10 text-amber-300"
                         }`}
                       >
                         Chain:{" "}
                         {quest.onChainMode === "midnight"
                           ? "Midnight"
-                          : "Local Fallback"}
+                          : quest.onChainMode === "wallet-popup"
+                            ? "Wallet Popup Authorized"
+                            : "Local Fallback"}
                       </span>
                       {quest.onChainMode !== "midnight" &&
                         quest.onChainReason && (
@@ -254,7 +279,7 @@ export default function SpaceDetail() {
                     </div>
                   </div>
                   <div className="flex gap-2">
-                    {quest.onChainMode !== "midnight" && (
+                    {quest.onChainMode === "mock" && (
                       <button
                         onClick={() => handlePublishQuest(quest.id)}
                         disabled={publishing === quest.id}

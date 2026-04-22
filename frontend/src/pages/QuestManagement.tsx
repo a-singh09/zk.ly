@@ -14,6 +14,11 @@ import {
   type ReviewerPolicyRecord,
 } from "../lib/api";
 import { useMidnightWallet } from "../lib/MidnightWalletContext";
+import {
+  createQuestOnChain,
+  QUEST_REGISTRY_ADDRESS,
+  type QuestRewardMode,
+} from "../lib/questContractApi";
 
 const CodeEditor =
   (Editor as typeof Editor & { default?: typeof Editor }).default ?? Editor;
@@ -64,7 +69,7 @@ export default function QuestManagement() {
     ),
   );
   const [active, setActive] = useState(true);
-  const { isConnected, walletAddress, connectWallet } = useMidnightWallet();
+  const { isConnected, walletAddress, connectWallet, connectedWalletApi } = useMidnightWallet();
 
   useEffect(() => {
     const loadData = async () => {
@@ -146,6 +151,7 @@ export default function QuestManagement() {
       >;
 
       if (isEditing && questId) {
+        // ---- Update existing quest (backend-only, no re-registration needed) ----
         await updateQuest(questId, {
           name: name.trim(),
           description: description.trim(),
@@ -165,9 +171,76 @@ export default function QuestManagement() {
         setSuccess("Quest updated successfully!");
         setTimeout(() => navigate(`/spaces/${spaceId}`), 1500);
       } else {
-        const creatorWallet =
+        // ---- Create new quest ----
+        // Step 1: Ensure wallet is connected
+        const currentAddress =
           isConnected && walletAddress ? walletAddress : await connectWallet();
 
+        // Step 2: Register quest on Midnight via DApp connector
+        let onChainQuestId: string | undefined;
+        let onChainTxId: string | undefined;
+        let onChainMode: "midnight" | "mock" | "wallet-popup" = "mock";
+        let onChainReason = "Not published on-chain. Wallet not connected or signing declined.";
+
+        if (connectedWalletApi) {
+          try {
+            console.info(
+              "[quest:create-chain] Submitting create_quest to Midnight via DApp connector",
+              { contractAddress: QUEST_REGISTRY_ADDRESS, spaceId },
+            );
+
+            const onChainRewardMode: QuestRewardMode =
+              rewardMode === "escrow-auto" ? "ESCROW_AUTOMATIC" : "XP_ONLY";
+
+            const result = await createQuestOnChain({
+              connectedApi: connectedWalletApi,
+              spaceId,
+              sprintId: spaceId, // use spaceId as sprint scope for now
+              questType: type.slice(0, 8),
+              trackTag: track.slice(0, 8),
+              criteriaJson: parsedCriteria,
+              xpValue: Math.min(reward, 65535),
+              rewardMode: onChainRewardMode,
+              escrowContract:
+                rewardMode === "escrow-auto"
+                  ? escrowContractAddress.trim()
+                  : undefined,
+              escrowAmount:
+                rewardMode === "escrow-auto" ? escrowAmount : undefined,
+            });
+
+            onChainQuestId = result.onChainQuestId;
+            onChainTxId = result.txId;
+            onChainMode = "wallet-popup";
+            onChainReason =
+              `Quest registered on Midnight quest-registry contract (${QUEST_REGISTRY_ADDRESS}). ` +
+              `DApp connector wallet signed the create_quest intent. Tx: ${result.txId.slice(0, 16)}…`;
+
+            console.info(
+              "[quest:create-chain] Quest registered on-chain",
+              result,
+            );
+          } catch (chainErr) {
+            const chainMsg =
+              chainErr instanceof Error
+                ? chainErr.message
+                : "Unknown on-chain error";
+            console.warn(
+              "[quest:create-chain] On-chain registration failed, falling back to off-chain",
+              chainMsg,
+            );
+            // Non-fatal: store as mock with failure note
+            onChainReason = `On-chain registration failed: ${chainMsg}. Quest saved off-chain only.`;
+          }
+        } else {
+          onChainReason =
+            "Midnight Lace wallet not connected. Quest saved off-chain. Connect wallet and use Publish action to register on-chain.";
+          console.warn(
+            "[quest:create-chain] No DApp connector available — skipping on-chain registration",
+          );
+        }
+
+        // Step 3: Persist metadata to backend
         await createQuest({
           spaceId,
           name: name.trim(),
@@ -183,12 +256,21 @@ export default function QuestManagement() {
               : undefined,
           escrowAmount: rewardMode === "escrow-auto" ? escrowAmount : undefined,
           criteriaJson: parsedCriteria,
-          creatorWallet,
-          publishOnChain: false,
+          creatorWallet: currentAddress,
+          // Pass the on-chain data from the DApp connector flow
+          onChainQuestId,
+          onChainTxId,
+          onChainMode,
+          onChainReason,
+          publishOnChain: false, // Already handled above via DApp connector
         });
+
         setSuccess(
-          "Quest created successfully. Publish it on-chain from the quest list.",
+          onChainQuestId
+            ? `Quest registered on Midnight chain (ID: ${onChainQuestId.slice(0, 12)}…) and saved.`
+            : "Quest saved. Connect Midnight Lace wallet to publish on-chain.",
         );
+
         setName("");
         setDescription("");
         setType("blog");
@@ -268,6 +350,39 @@ export default function QuestManagement() {
           <div className="mb-6 flex gap-3 border border-green-500/30 bg-green-500/10 text-green-200 p-4 rounded">
             <CheckCircle2 size={20} className="flex-shrink-0 mt-0.5" />
             <p>{success}</p>
+          </div>
+        )}
+
+        {/* On-chain registration status banner */}
+        {!isEditing && (
+          <div
+            className={`mb-6 flex gap-3 border p-4 rounded text-sm ${
+              connectedWalletApi
+                ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
+                : "border-amber-500/30 bg-amber-500/10 text-amber-200"
+            }`}
+          >
+            <span className="flex-shrink-0 mt-0.5">
+              {connectedWalletApi ? "⛓" : "⚠"}
+            </span>
+            <p>
+              {connectedWalletApi ? (
+                <>
+                  <strong>Midnight Lace connected.</strong> Quest will be
+                  registered on the{" "}
+                  <span className="font-mono text-xs">
+                    quest-registry
+                  </span>{" "}
+                  contract via your wallet when you submit.
+                </>
+              ) : (
+                <>
+                  <strong>Midnight Lace not connected.</strong> Quest will be
+                  saved off-chain only. Connect your wallet via the top bar to
+                  enable on-chain registration.
+                </>
+              )}
+            </p>
           </div>
         )}
 

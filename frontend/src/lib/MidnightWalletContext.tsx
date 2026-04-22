@@ -24,6 +24,14 @@ interface LaceCip30Provider {
   enable(): Promise<LaceCip30Api>;
 }
 
+export interface MidnightServiceConfig {
+  indexerUri: string;
+  indexerWsUri: string;
+  proverServerUri: string;
+  substrateNodeUri: string;
+  networkId: string;
+}
+
 interface MidnightWalletContextValue {
   isConnected: boolean;
   isWalletInstalled: boolean;
@@ -31,9 +39,17 @@ interface MidnightWalletContextValue {
   walletAddress: string | null;
   walletNetwork: string | null;
   walletError: string | null;
+  /** Raw DApp Connector API — use for contract calls (balanceUnsealedTransaction, submitTransaction) */
+  connectedWalletApi: ConnectedAPI | null;
   connectWallet: () => Promise<string>;
   disconnectWallet: () => void;
   clearWalletError: () => void;
+  getServiceConfig: () => Promise<MidnightServiceConfig>;
+  signWalletAuthorization: (payload: string) => Promise<{
+    signature: string;
+    data: string;
+    verifyingKey: string;
+  }>;
 }
 
 declare global {
@@ -106,6 +122,8 @@ export function MidnightWalletProvider({ children }: { children: ReactNode }) {
   const [walletNetwork, setWalletNetwork] = useState<string | null>("preprod");
   const [isConnecting, setIsConnecting] = useState(false);
   const [walletError, setWalletError] = useState<string | null>(null);
+  const [connectedWalletApi, setConnectedWalletApi] =
+    useState<ConnectedAPI | null>(null);
 
   const networkId = "preprod";
 
@@ -206,6 +224,7 @@ export function MidnightWalletProvider({ children }: { children: ReactNode }) {
 
         setWalletAddress(shielded.shieldedAddress);
         setWalletNetwork(connectedNetworkId);
+        setConnectedWalletApi(connectedApi);
         return shielded.shieldedAddress;
       }
 
@@ -241,6 +260,7 @@ export function MidnightWalletProvider({ children }: { children: ReactNode }) {
 
       setWalletAddress(resolvedAddress);
       setWalletNetwork("lace");
+      setConnectedWalletApi(null);
       return resolvedAddress;
     } catch (error) {
       const message =
@@ -257,10 +277,73 @@ export function MidnightWalletProvider({ children }: { children: ReactNode }) {
   const disconnectWallet = () => {
     setWalletAddress(null);
     setWalletNetwork(networkId);
+    setConnectedWalletApi(null);
+  };
+
+  const signWalletAuthorization = async (payload: string) => {
+    if (!payload.trim()) {
+      throw new Error("Authorization payload cannot be empty.");
+    }
+
+    const api = connectedWalletApi;
+    if (!api) {
+      throw new Error(
+        "Midnight DApp connector is not connected. Connect wallet before authorizing.",
+      );
+    }
+
+    // hintUsage is optional — some Lace versions may not implement it yet
+    if (typeof api.hintUsage === "function") {
+      await withTimeout(
+        api.hintUsage(["signData"]),
+        API_TIMEOUT_MS,
+        "Wallet did not accept signData permission request in time.",
+      ).catch(() => {
+        /* non-fatal — continue to signData */
+      });
+    }
+
+    const signature = await withTimeout(
+      api.signData(payload, {
+        encoding: "text",
+        keyType: "unshielded",
+      }),
+      API_TIMEOUT_MS,
+      "Wallet signing popup timed out or was rejected.",
+    );
+
+    return {
+      signature: signature.signature,
+      data: signature.data,
+      verifyingKey: signature.verifyingKey,
+    };
   };
 
   const clearWalletError = () => {
     setWalletError(null);
+  };
+
+  const getServiceConfig = async (): Promise<MidnightServiceConfig> => {
+    const api = connectedWalletApi;
+    if (!api) {
+      throw new Error(
+        "Midnight DApp connector is not connected. Connect wallet first.",
+      );
+    }
+    // getConfiguration() is available on ConnectedAPI v4+
+    const cfg = await withTimeout(
+      (api as ConnectedAPI & { getConfiguration?: () => Promise<MidnightServiceConfig> }).getConfiguration?.() ??
+        Promise.resolve({
+          indexerUri: "https://indexer.preprod.midnight.network/api/v4/graphql",
+          indexerWsUri: "wss://indexer.preprod.midnight.network/api/v4/graphql/ws",
+          proverServerUri: "http://127.0.0.1:6300",
+          substrateNodeUri: "wss://rpc.preprod.midnight.network",
+          networkId: "preprod",
+        }),
+      API_TIMEOUT_MS,
+      "Timed out fetching wallet service configuration.",
+    );
+    return cfg;
   };
 
   const value = useMemo<MidnightWalletContextValue>(
@@ -271,17 +354,23 @@ export function MidnightWalletProvider({ children }: { children: ReactNode }) {
       walletAddress,
       walletNetwork,
       walletError,
+      connectedWalletApi,
       connectWallet,
       disconnectWallet,
       clearWalletError,
+      getServiceConfig,
+      signWalletAuthorization,
     }),
     [
       clearWalletError,
+      connectedWalletApi,
       isConnecting,
       isWalletInstalled,
       walletAddress,
       walletError,
       walletNetwork,
+      getServiceConfig,
+      signWalletAuthorization,
     ],
   );
 

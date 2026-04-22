@@ -36,11 +36,7 @@ import {
   createReviewerPolicy,
   updateReviewerPolicy,
 } from "../services/adminService.js";
-import {
-  createQuestOnMidnight,
-  getMidnightStatus,
-  verifyCompletionOnMidnight,
-} from "../services/midnightService.js";
+import { getMidnightStatus } from "../services/midnightService.js";
 
 const PORT = Number(process.env.PORT ?? 8787);
 
@@ -244,7 +240,14 @@ const server = createServer(async (request, response) => {
 
   if (request.method === "POST" && url.pathname === "/api/commitments") {
     try {
-      const body = (await readJsonBody(request)) as CommitmentRequest;
+      const body = (await readJsonBody(request)) as CommitmentRequest & {
+        onChainCertId?: string;
+        onChainCommitmentHash?: string;
+        onChainReviewCommitmentHash?: string;
+        onChainTxId?: string;
+        onChainMode?: "midnight" | "mock" | "wallet-popup";
+        chainNote?: string;
+      };
       if (!body.reviewId) {
         sendJson(response, 400, { error: "reviewId is required" });
         return;
@@ -258,56 +261,49 @@ const server = createServer(async (request, response) => {
 
       const quest = quests.get(review.questId);
       const baseCommitment = createCommitment(review, body);
-      let commitment = baseCommitment;
-      let chainNote =
-        "Contracts are not deployed yet, so this is a pre-commit authorization artifact.";
 
-      if (quest) {
-        try {
-          const chainResult = await verifyCompletionOnMidnight({
-            quest,
-            review,
-            walletAddress: baseCommitment.walletAddress,
-            authorizationMode: baseCommitment.authorizationMode,
-          });
+      const walletApprovalSignature = body.walletApprovalSignature?.trim();
+      const walletApprovalData = body.walletApprovalData?.trim();
+      const walletApprovalVerifyingKey = body.walletApprovalVerifyingKey?.trim();
 
-          if (chainResult.mode === "midnight") {
-            commitment = {
-              ...baseCommitment,
-              proofMode: "midnight",
-              status: chainResult.certificateIdHex
-                ? "authorized"
-                : "pending-chain",
-              onChainCertificateId: chainResult.certificateIdHex,
-              onChainQuestId: quest.onChainQuestId,
-              onChainTxId: chainResult.txId,
-              onChainReviewCommitmentHash: chainResult.reviewCommitmentHex
-                ? `0x${chainResult.reviewCommitmentHex}`
-                : baseCommitment.onChainReviewCommitmentHash,
-              onChainCommitmentCommitmentHash:
-                chainResult.commitmentCommitmentHex
-                  ? `0x${chainResult.commitmentCommitmentHex}`
-                  : baseCommitment.onChainCommitmentCommitmentHash,
-            };
+      // Use on-chain data provided by the DApp connector if present
+      const onChainCertId = body.onChainCertId?.trim();
+      const onChainCommitmentHash = body.onChainCommitmentHash?.trim();
+      const onChainReviewCommitmentHash = body.onChainReviewCommitmentHash?.trim();
+      const onChainTxId = body.onChainTxId?.trim();
 
-            chainNote = chainResult.certificateIdHex
-              ? "Midnight proof generated and completion certificate issued on-chain."
-              : "Midnight transaction submitted; certificate indexing is still in progress.";
-          } else {
-            chainNote = chainResult.reason
-              ? `Fallback mode: ${chainResult.reason}`
-              : "Fallback mode: using local commitment while Midnight contracts are unavailable.";
-          }
-        } catch (chainError) {
-          chainNote =
-            chainError instanceof Error
-              ? `Midnight proof path failed: ${chainError.message}`
-              : "Midnight proof path failed unexpectedly.";
-        }
-      } else {
-        chainNote =
-          "Quest metadata not found for this review, so only local commitment data is available.";
-      }
+      // Prefer the chainNote from the DApp connector; fall back to generic messages
+      const chainNote =
+        body.chainNote?.trim() ??
+        (onChainCertId
+          ? `Completion intent authorized via Midnight DApp connector. Cert: ${onChainCertId.slice(0, 12)}…`
+          : walletApprovalSignature
+            ? "Wallet popup approval captured; backend no longer submits contract transactions."
+            : quest
+              ? "Wallet popup approval is required before recording authorization."
+              : "Quest metadata not found for this review, so only local commitment data is available.");
+
+      const commitment = {
+        ...baseCommitment,
+        ...(walletApprovalSignature
+          ? {
+              status: "authorized" as const,
+              walletApprovalSignature,
+              walletApprovalData,
+              walletApprovalVerifyingKey,
+            }
+          : {}),
+        // Store DApp connector on-chain fields
+        ...(onChainCertId ? { onChainCertificateId: onChainCertId } : {}),
+        ...(onChainCommitmentHash
+          ? { onChainCommitmentCommitmentHash: onChainCommitmentHash }
+          : {}),
+        ...(onChainReviewCommitmentHash
+          ? { onChainReviewCommitmentHash }
+          : {}),
+        ...(onChainTxId ? { onChainTxId } : {}),
+        proofMode: onChainCertId ? ("midnight" as const) : ("mock" as const),
+      };
 
       commitments.set(commitment.commitmentId, commitment);
       sendJson(response, 200, {
@@ -324,6 +320,7 @@ const server = createServer(async (request, response) => {
     }
     return;
   }
+
 
   if (
     request.method === "GET" &&
@@ -499,7 +496,12 @@ const server = createServer(async (request, response) => {
 
   if (request.method === "POST" && url.pathname === "/api/quests") {
     try {
-      const body = (await readJsonBody(request)) as QuestCreateRequest;
+      const body = (await readJsonBody(request)) as QuestCreateRequest & {
+        onChainQuestId?: string;
+        onChainTxId?: string;
+        onChainMode?: "midnight" | "mock" | "wallet-popup";
+        onChainReason?: string;
+      };
       const spaceId = body.spaceId?.trim();
       const name = body.name?.trim();
       const description = body.description?.trim();
@@ -540,13 +542,36 @@ const server = createServer(async (request, response) => {
         }
       }
 
+      // Auto-create space record if not found (supports dynamic spaces created in-session
+      // and survives server restarts where in-memory state was lost).
       if (!spaces.has(spaceId)) {
-        sendJson(response, 404, { error: "Space not found" });
-        return;
+        const autoSpace: SpaceRecord = {
+          id: spaceId,
+          name: spaceId,
+          desc: `Auto-created space for ${spaceId}`,
+          members: 1,
+          quests: 0,
+          createdAt: new Date().toISOString(),
+          creatorWallet: body.creatorWallet?.trim() || undefined,
+        };
+        spaces.set(spaceId, autoSpace);
+        console.warn(
+          `[quests] Space '${spaceId}' not found in store — auto-created stub record.`,
+        );
       }
 
       const now = new Date().toISOString();
       const questId = createId("quest");
+
+      // Use on-chain data from DApp connector if provided, otherwise record as pending.
+      const providedOnChainQuestId = body.onChainQuestId?.trim();
+      const providedOnChainTxId = body.onChainTxId?.trim();
+      const providedOnChainMode = body.onChainMode ?? "mock";
+      const providedOnChainReason =
+        body.onChainReason ??
+        (publishOnChain
+          ? "On-chain publish requested. Awaiting wallet popup approval."
+          : "Not published on-chain yet. Use the Publish action from quest list.");
 
       const quest = {
         id: questId,
@@ -561,13 +586,14 @@ const server = createServer(async (request, response) => {
         escrowContractAddress,
         escrowAmount: rewardMode === "escrow-auto" ? escrowAmount : undefined,
         criteriaJson,
-        onChainQuestId: undefined,
+        onChainQuestId: providedOnChainQuestId,
         onChainCriteriaCommitment: undefined,
-        onChainTxId: undefined,
-        onChainMode: "mock" as const,
-        onChainReason: publishOnChain
-          ? "On-chain publish requested. Processing asynchronously."
-          : "Not published on-chain yet. Use the Publish action from quest list.",
+        onChainTxId: providedOnChainTxId,
+        onChainMode: providedOnChainMode as "midnight" | "mock" | "wallet-popup",
+        onChainReason: providedOnChainReason,
+        walletApprovalSignature: undefined,
+        walletApprovalData: undefined,
+        walletApprovalVerifyingKey: undefined,
         creatorWallet: body.creatorWallet,
         createdAt: now,
         updatedAt: now,
@@ -583,69 +609,7 @@ const server = createServer(async (request, response) => {
         spaces.set(spaceId, space);
       }
 
-      sendJson(response, 201, {
-        ...quest,
-      });
-
-      if (publishOnChain) {
-        const chainTimeoutMs = Number(
-          process.env.MIDNIGHT_QUEST_CREATE_TIMEOUT_MS ?? 60_000,
-        );
-
-        void withTimeout(
-          createQuestOnMidnight({
-            localQuestId: questId,
-            spaceId,
-            type,
-            track,
-            reward,
-            rewardMode,
-            escrowContractAddress,
-            escrowAmount,
-            criteriaJson,
-          }),
-          chainTimeoutMs,
-          () => ({
-            mode: "mock" as const,
-            reason:
-              "Midnight create_quest timed out. Quest remains local; retry publish.",
-            questIdHex: undefined,
-            criteriaCommitmentHex: undefined,
-            txId: undefined,
-          }),
-        )
-          .then((onChain) => {
-            const current = quests.get(questId);
-            if (!current) return;
-            const updated = {
-              ...current,
-              onChainQuestId: onChain.questIdHex,
-              onChainCriteriaCommitment: onChain.criteriaCommitmentHex,
-              onChainTxId: onChain.txId,
-              onChainMode: onChain.mode,
-              onChainReason:
-                onChain.reason ??
-                (onChain.mode === "midnight"
-                  ? undefined
-                  : "Publish fallback mode."),
-              updatedAt: new Date().toISOString(),
-            };
-            quests.set(questId, updated);
-          })
-          .catch((error) => {
-            const current = quests.get(questId);
-            if (!current) return;
-            quests.set(questId, {
-              ...current,
-              onChainMode: "mock",
-              onChainReason:
-                error instanceof Error
-                  ? `Publish failed: ${error.message}`
-                  : "Publish failed unexpectedly.",
-              updatedAt: new Date().toISOString(),
-            });
-          });
-      }
+      sendJson(response, 200, { ...quest });
     } catch (error) {
       sendJson(response, 400, {
         error: "Invalid quest creation payload",
@@ -667,61 +631,36 @@ const server = createServer(async (request, response) => {
         return;
       }
 
-      const chainTimeoutMs = Number(
-        process.env.MIDNIGHT_QUEST_CREATE_TIMEOUT_MS ?? 60_000,
-      );
+      const body = (await readJsonBody(request)) as {
+        walletAddress?: string;
+        walletApprovalSignature?: string;
+        walletApprovalData?: string;
+        walletApprovalVerifyingKey?: string;
+      };
 
-      console.info(
-        `[quest:publish] localQuestId=${questId} spaceId=${quest.spaceId} starting explicit publish`,
-      );
+      const walletAddress = body.walletAddress?.trim();
+      const walletApprovalSignature = body.walletApprovalSignature?.trim();
+      const walletApprovalData = body.walletApprovalData?.trim();
+      const walletApprovalVerifyingKey =
+        body.walletApprovalVerifyingKey?.trim();
 
-      const onChain = await withTimeout(
-        createQuestOnMidnight({
-          localQuestId: quest.id,
-          spaceId: quest.spaceId,
-          type: quest.type,
-          track: quest.track,
-          reward: quest.reward,
-          rewardMode: quest.rewardMode,
-          escrowContractAddress: quest.escrowContractAddress,
-          escrowAmount: quest.escrowAmount,
-          criteriaJson: quest.criteriaJson,
-        }).catch((error) => ({
-          mode: "mock" as const,
-          reason:
-            error instanceof Error
-              ? `Midnight publish failed: ${error.message}`
-              : "Midnight publish failed unexpectedly.",
-          questIdHex: undefined,
-          criteriaCommitmentHex: undefined,
-          txId: undefined,
-        })),
-        chainTimeoutMs,
-        () => ({
-          mode: "mock" as const,
-          reason:
-            "Midnight publish timed out. Check proof server/runtime and retry.",
-          questIdHex: undefined,
-          criteriaCommitmentHex: undefined,
-          txId: undefined,
-        }),
-      );
-
-      console.info(
-        `[quest:publish] localQuestId=${questId} chainMode=${onChain.mode} onChainQuestId=${onChain.questIdHex ?? "n/a"} tx=${onChain.txId ?? "n/a"}`,
-      );
+      if (!walletAddress || !walletApprovalSignature) {
+        sendJson(response, 400, {
+          error:
+            "walletAddress and walletApprovalSignature are required for wallet-popup publishing",
+        });
+        return;
+      }
 
       const updated = {
         ...quest,
-        onChainQuestId: onChain.questIdHex,
-        onChainCriteriaCommitment: onChain.criteriaCommitmentHex,
-        onChainTxId: onChain.txId,
-        onChainMode: onChain.mode,
+        onChainMode: "wallet-popup" as const,
         onChainReason:
-          onChain.reason ??
-          (onChain.mode === "midnight"
-            ? undefined
-            : "Quest remains in local fallback mode."),
+          "Wallet popup approved. Backend recorded intent and authorization; transaction submission now runs from the DApp connector flow.",
+        walletApprovalSignature,
+        walletApprovalData,
+        walletApprovalVerifyingKey,
+        creatorWallet: walletAddress,
         updatedAt: new Date().toISOString(),
       };
 

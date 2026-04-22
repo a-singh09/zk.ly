@@ -80,6 +80,7 @@ interface MidnightStatus {
   reason?: string;
   questContractAddress?: string;
   completionContractAddress?: string;
+  txSubmissionMode?: "backend-operator" | "wallet-popup";
 }
 
 interface QuestOnChainResult {
@@ -250,6 +251,7 @@ function getStatus(): MidnightStatus {
     return {
       enabled: false,
       reason: "MIDNIGHT_DISABLE_CONTRACTS=1",
+      txSubmissionMode: "wallet-popup",
     };
   }
 
@@ -266,6 +268,7 @@ function getStatus(): MidnightStatus {
       enabled: false,
       reason:
         "Deployment metadata missing. Deploy quest-registry and completion-registry first.",
+      txSubmissionMode: "wallet-popup",
     };
   }
 
@@ -273,6 +276,7 @@ function getStatus(): MidnightStatus {
     return {
       enabled: false,
       reason: "Missing compiled artifact: contracts/managed/quest-registry",
+      txSubmissionMode: "wallet-popup",
     };
   }
 
@@ -283,6 +287,7 @@ function getStatus(): MidnightStatus {
       enabled: false,
       reason:
         "Missing compiled artifact: contracts/managed/completion-registry",
+      txSubmissionMode: "wallet-popup",
     };
   }
 
@@ -290,6 +295,10 @@ function getStatus(): MidnightStatus {
     enabled: true,
     questContractAddress: questDeployment.contractAddress,
     completionContractAddress: completionDeployment.contractAddress,
+    txSubmissionMode:
+      process.env.MIDNIGHT_TX_SUBMISSION_MODE === "backend-operator"
+        ? "backend-operator"
+        : "wallet-popup",
   };
 }
 

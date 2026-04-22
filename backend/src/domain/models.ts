@@ -17,6 +17,9 @@ export interface CommitmentRequest {
   reviewId?: string;
   walletAddress?: string;
   authorizationMode?: string;
+  walletApprovalSignature?: string;
+  walletApprovalData?: string;
+  walletApprovalVerifyingKey?: string;
 }
 
 export interface SpaceCreateRequest {
@@ -91,6 +94,9 @@ export interface CommitmentRecord {
   reviewId: string;
   walletAddress: string;
   authorizationMode: string;
+  walletApprovalSignature?: string;
+  walletApprovalData?: string;
+  walletApprovalVerifyingKey?: string;
   commitmentHash: string;
   reviewCommitmentHash?: string;
   selectiveDisclosureHash?: string;
@@ -186,8 +192,11 @@ export interface QuestRecord {
   onChainQuestId?: string;
   onChainCriteriaCommitment?: string;
   onChainTxId?: string;
-  onChainMode?: "midnight" | "mock";
+  onChainMode?: "midnight" | "mock" | "wallet-popup";
   onChainReason?: string;
+  walletApprovalSignature?: string;
+  walletApprovalData?: string;
+  walletApprovalVerifyingKey?: string;
   creatorWallet?: string;
   createdAt: string;
   updatedAt: string;
@@ -208,6 +217,14 @@ export interface QuestCreateRequest {
   criteriaJson?: Record<string, unknown>;
   creatorWallet?: string;
   publishOnChain?: boolean;
+  /** On-chain quest ID produced by the DApp connector create_quest circuit call. */
+  onChainQuestId?: string;
+  /** Transaction ID returned by the wallet after submission. */
+  onChainTxId?: string;
+  /** How the on-chain registration was performed. */
+  onChainMode?: "midnight" | "mock" | "wallet-popup";
+  /** Human-readable note about the on-chain status. */
+  onChainReason?: string;
 }
 
 export interface QuestUpdateRequest {

@@ -19,6 +19,10 @@ import {
 import { useNotification } from "../lib/NotificationContext";
 import { useMidnightWallet } from "../lib/MidnightWalletContext";
 import {
+  commitCompletionOnChain,
+  COMPLETION_REGISTRY_ADDRESS,
+} from "../lib/questContractApi";
+import {
   authorizeReviewCommitment,
   createEscalation,
   fetchDevToArticle,
@@ -141,13 +145,13 @@ function PrivacyBreakdown({ commitment }: { commitment: CommitmentResponse }) {
               </div>
               <div>
                 •{" "}
-                <span className="font-mono text-white/90">
-                  evidence_class
-                </span>: proof type e.g. AI_SCORE
+                <span className="font-mono text-white/90">evidence_class</span>:
+                proof type e.g. AI_SCORE
               </div>
             </div>
             <div className="mt-2 font-mono text-[10px] text-white/50 break-all">
-              hash: {commitment.selectiveDisclosureHash || commitment.commitmentHash}
+              hash:{" "}
+              {commitment.selectiveDisclosureHash || commitment.commitmentHash}
             </div>
           </div>
         </div>
@@ -159,9 +163,13 @@ function PrivacyBreakdown({ commitment }: { commitment: CommitmentResponse }) {
               Private (ZK witness — never on-chain)
             </div>
             <div className="text-xs text-white/50 space-y-0.5">
-              <div>• Raw AI review score ({commitment.review?.score ?? "—"})</div>
+              <div>
+                • Raw AI review score ({commitment.review?.score ?? "—"})
+              </div>
               <div>• Full AI analysis and breakdown</div>
-              <div>• Raw wallet address (only the pseudonymous hash is stored)</div>
+              <div>
+                • Raw wallet address (only the pseudonymous hash is stored)
+              </div>
               <div>• Quest acceptance criteria bytes</div>
             </div>
           </div>
@@ -222,12 +230,13 @@ function MidnightStatusBanner({
         Midnight Runtime:
       </span>
       <span className={enabled ? "text-emerald-200" : "text-amber-200"}>
-        {enabled ? "Contracts deployed · ZK proofs enabled" : health.midnight.reason || "Fallback mode"}
+        {enabled
+          ? "Contracts deployed · ZK proofs enabled"
+          : health.midnight.reason || "Fallback mode"}
       </span>
       {health.midnight.questContractAddress && (
         <span className="text-white/30 hidden md:inline">
-          · quest:{" "}
-          {health.midnight.questContractAddress.slice(0, 12)}…
+          · quest: {health.midnight.questContractAddress.slice(0, 12)}…
         </span>
       )}
     </div>
@@ -279,7 +288,8 @@ export default function QuestClaim() {
   const { id, questId } = useParams();
   const navigate = useNavigate();
   const { notifyComplete } = useNotification();
-  const { isConnected, walletAddress, connectWallet } = useMidnightWallet();
+  const { isConnected, walletAddress, connectWallet, connectedWalletApi } =
+    useMidnightWallet();
 
   const [artifactUrl, setArtifactUrl] = useState(
     "https://dev.to/midnight/demo-blog-post",
@@ -290,28 +300,29 @@ export default function QuestClaim() {
   const [isAuthorizing, setIsAuthorizing] = useState(false);
   const [isEscalating, setIsEscalating] = useState(false);
   const [article, setArticle] = useState<DevToArticle | null>(null);
-  const [reviewResult, setReviewResult] = useState<AiReviewResponse | null>(null);
-  const [commitmentResult, setCommitmentResult] = useState<CommitmentResponse | null>(null);
-  const [escalationResult, setEscalationResult] = useState<EscalationRecord | null>(null);
+  const [reviewResult, setReviewResult] = useState<AiReviewResponse | null>(
+    null,
+  );
+  const [commitmentResult, setCommitmentResult] =
+    useState<CommitmentResponse | null>(null);
+  const [escalationResult, setEscalationResult] =
+    useState<EscalationRecord | null>(null);
   const [escalationReason, setEscalationReason] = useState(
     "AI missed contextual evidence. Please review manually.",
   );
   const [error, setError] = useState<string | null>(null);
-  const [midnightHealth, setMidnightHealth] = useState<MidnightHealthStatus | null>(null);
+  const [midnightHealth, setMidnightHealth] =
+    useState<MidnightHealthStatus | null>(null);
 
   // Determine current step
-  const currentStep = commitmentResult
-    ? 3
-    : reviewResult
-      ? 2
-      : article
-        ? 1
-        : 0;
+  const currentStep = commitmentResult ? 3 : reviewResult ? 2 : article ? 1 : 0;
 
   useEffect(() => {
     getMidnightHealth()
       .then(setMidnightHealth)
-      .catch(() => {/* silently ignore if server is down */});
+      .catch(() => {
+        /* silently ignore if server is down */
+      });
   }, []);
 
   const handleFetchArticle = async () => {
@@ -396,17 +407,112 @@ export default function QuestClaim() {
     try {
       const currentAddress =
         isConnected && walletAddress ? walletAddress : await connectWallet();
+
+      // ── Step 1: DApp connector — sign verify_completion intent ──
+      let onChainCertId: string | undefined;
+      let onChainCommitmentHash: string | undefined;
+      let onChainReviewCommitmentHash: string | undefined;
+      let walletSig: string | undefined;
+      let walletData: string | undefined;
+      let walletVerifyingKey: string | undefined;
+      let onChainTxId: string | undefined;
+      let onChainMode: "midnight" | "mock" | "wallet-popup" = "mock";
+      let chainNote =
+        "Commitment saved off-chain. Connect Midnight Lace to register on the Completion Registry contract.";
+
+      if (connectedWalletApi) {
+        try {
+          console.info(
+            "[commitment] Submitting verify_completion intent via DApp connector",
+            { contractAddress: COMPLETION_REGISTRY_ADDRESS },
+          );
+
+          // Determine score band from AI review score
+          const score = reviewResult.score ?? 0;
+          const scoreBand: 0 | 1 | 2 | 3 =
+            score >= 85 ? 3 : score >= 70 ? 2 : score >= 50 ? 1 : 0;
+
+          const onChainResult = await commitCompletionOnChain({
+            connectedApi: connectedWalletApi,
+            questId: questId ?? "blog-quest-demo",
+            sprintId: id ?? "midnight",
+            spaceId: id ?? "midnight",
+            reviewId: reviewResult.reviewId,
+            score,
+            passed: reviewResult.passed,
+            scoreBand,
+            evidenceClass: "AI_SCORE",
+            xpValue: 100,
+            evidenceHash: reviewResult.evidenceHash,
+            walletAddress: currentAddress,
+          });
+
+          onChainCertId = onChainResult.certId;
+          onChainCommitmentHash = onChainResult.commitmentHash;
+          onChainReviewCommitmentHash = onChainResult.reviewCommitmentHash;
+          walletSig = onChainResult.walletSignature;
+          walletData = onChainResult.walletData;
+          walletVerifyingKey = onChainResult.walletVerifyingKey;
+          onChainTxId = onChainResult.txId;
+          onChainMode = "wallet-popup";
+          chainNote =
+            `Completion intent signed via Midnight DApp connector (Lace). ` +
+            `verify_completion() circuit authorized for Completion Registry ` +
+            `(${COMPLETION_REGISTRY_ADDRESS}). Cert: ${onChainResult.certId.slice(0, 12)}…`;
+
+          console.info(
+            "[commitment] verify_completion intent authorized on-chain",
+            onChainResult,
+          );
+        } catch (chainErr) {
+          const chainMsg =
+            chainErr instanceof Error ? chainErr.message : String(chainErr);
+          console.warn(
+            "[commitment] DApp connector signing failed, falling back to off-chain",
+            chainMsg,
+          );
+          chainNote = `DApp connector signing failed: ${chainMsg}. Commitment saved off-chain.`;
+        }
+      } else {
+        console.warn(
+          "[commitment] No DApp connector available — skipping on-chain commitment",
+        );
+      }
+
+      // ── Step 2: Build backend authorization payload ──
+      const approvalPayload = JSON.stringify({
+        action: "authorize-review-commitment",
+        reviewId: reviewResult.reviewId,
+        questId: questId ?? "blog-quest-demo",
+        spaceId: id ?? "midnight",
+        walletAddress: currentAddress,
+        onChainCertId,
+        onChainMode,
+        issuedAt: new Date().toISOString(),
+      });
+
+      // ── Step 3: Persist to backend ──
       const commitment = await authorizeReviewCommitment({
         reviewId: reviewResult.reviewId,
         walletAddress: currentAddress,
-        authorizationMode: "dapp-connector",
+        authorizationMode: connectedWalletApi ? "dapp-connector" : "mock",
+        walletApprovalSignature: walletSig ?? approvalPayload,
+        walletApprovalData: walletData ?? approvalPayload,
+        walletApprovalVerifyingKey: walletVerifyingKey ?? "",
+        // Pass on-chain data for the backend to store
+        onChainCertId,
+        onChainCommitmentHash,
+        onChainReviewCommitmentHash,
+        onChainTxId,
+        onChainMode,
+        chainNote,
       });
 
       setCommitmentResult(commitment);
       notifyComplete(
-        commitment.proofMode === "midnight"
-          ? "ZK proof generated on Midnight! Completion certificate issued on-chain."
-          : "Commitment captured in local mode. Deploy contracts to activate Midnight ZK proofs.",
+        onChainCertId
+          ? `ZK commitment authorized on Midnight! Cert: ${onChainCertId.slice(0, 12)}…`
+          : "Commitment saved. Connect Midnight Lace wallet to register on-chain.",
       );
       setTimeout(() => {
         navigate(`/proof/${commitment.commitmentId}`);
@@ -443,19 +549,37 @@ export default function QuestClaim() {
           <StepIndicator
             step={1}
             label="Fetch Artifact"
-            status={currentStep >= 1 ? "done" : currentStep === 0 ? "active" : "pending"}
+            status={
+              currentStep >= 1
+                ? "done"
+                : currentStep === 0
+                  ? "active"
+                  : "pending"
+            }
           />
           <div className="w-8 h-px bg-white/10" />
           <StepIndicator
             step={2}
             label="AI Review"
-            status={currentStep >= 2 ? "done" : currentStep === 1 ? "active" : "pending"}
+            status={
+              currentStep >= 2
+                ? "done"
+                : currentStep === 1
+                  ? "active"
+                  : "pending"
+            }
           />
           <div className="w-8 h-px bg-white/10" />
           <StepIndicator
             step={3}
             label="ZK Commitment"
-            status={currentStep >= 3 ? "done" : currentStep === 2 ? "active" : "pending"}
+            status={
+              currentStep >= 3
+                ? "done"
+                : currentStep === 2
+                  ? "active"
+                  : "pending"
+            }
           />
         </div>
 
@@ -613,8 +737,8 @@ export default function QuestClaim() {
               </div>
               <p className="text-white/60 text-sm leading-7">
                 The Midnight DApp Connector is used to read your shielded
-                address. Your wallet signing key is used as the private witness
-                for the ZK proof — it never leaves your device.
+                address and approve signing popups for claim authorization. Your
+                wallet signing key never leaves your device.
               </p>
               <div className="mt-5 border border-white/10 bg-[#0A0A0A] p-4 text-sm font-mono text-white/80 break-all">
                 {isConnected ? walletAddress : "Wallet not connected yet"}
@@ -799,11 +923,14 @@ export default function QuestClaim() {
                 <div>
                   <p className="text-white/50 text-sm leading-7 mb-4">
                     Once the AI review passes, authorize the commitment with
-                    your wallet. The backend runs the{" "}
+                    your wallet popup. The backend only records signed
+                    authorization metadata; it no longer signs as an operator
+                    wallet. The{" "}
                     <span className="font-mono text-white/70">
                       verify_completion()
                     </span>{" "}
-                    Compact circuit and issues a ZK certificate on Midnight.
+                    Compact call path can then be submitted through wallet-led
+                    transaction flows.
                   </p>
                   {/* Privacy preview */}
                   <div className="border border-white/5 bg-[#0A0A0A] p-4 text-xs text-white/40 space-y-2">
@@ -813,17 +940,23 @@ export default function QuestClaim() {
                     </div>
                     <div className="flex items-center gap-2">
                       <Unlock size={10} className="text-emerald-400" />
-                      <span className="text-white/50">Public on-chain:</span>{" "}
+                      <span className="text-white/50">
+                        Public on-chain:
+                      </span>{" "}
                       quest_id, xp_awarded, status, completer_key (hash)
                     </div>
                     <div className="flex items-center gap-2">
                       <Eye size={10} className="text-blue-400" />
-                      <span className="text-white/50">Selectively disclosed:</span>{" "}
+                      <span className="text-white/50">
+                        Selectively disclosed:
+                      </span>{" "}
                       passed_flag, score_band
                     </div>
                     <div className="flex items-center gap-2">
                       <EyeOff size={10} className="text-white/30" />
-                      <span className="text-white/50">Private (ZK witness):</span>{" "}
+                      <span className="text-white/50">
+                        Private (ZK witness):
+                      </span>{" "}
                       raw score, AI analysis, wallet address
                     </div>
                   </div>
