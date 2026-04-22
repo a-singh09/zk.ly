@@ -12,6 +12,17 @@ export type QuestTrack =
   | "community-leadership";
 
 export type RewardMode = "xp-only" | "escrow-auto";
+export type VerificationStatus =
+  | "pending-admin"
+  | "approved"
+  | "rejected"
+  | "claimed";
+export type RewardStatus =
+  | "none"
+  | "awaiting-admin"
+  | "claimable"
+  | "claimed"
+  | "rejected";
 
 export interface CommitmentRequest {
   reviewId?: string;
@@ -92,6 +103,7 @@ export interface ReviewRecord {
 export interface CommitmentRecord {
   commitmentId: string;
   reviewId: string;
+  questId: string;
   walletAddress: string;
   authorizationMode: string;
   walletApprovalSignature?: string;
@@ -105,8 +117,28 @@ export interface CommitmentRecord {
   onChainCertificateId?: string;
   onChainQuestId?: string;
   onChainTxId?: string;
+  completionDecisionTxId?: string;
+  escrowDecisionTxId?: string;
+  escrowClaimTxId?: string;
+  completionClaimTxId?: string;
   proofMode: "mock" | "midnight";
   status: "authorized" | "pending-chain";
+  verificationStatus: VerificationStatus;
+  rewardStatus: RewardStatus;
+  rewardMode: RewardMode;
+  rewardAmount: number;
+  adminApprovalSignature?: string;
+  adminApprovalData?: string;
+  adminApprovalVerifyingKey?: string;
+  approvedBy?: string;
+  approvedAt?: string;
+  rejectedBy?: string;
+  rejectedAt?: string;
+  claimSignature?: string;
+  claimData?: string;
+  claimVerifyingKey?: string;
+  claimedBy?: string;
+  claimedAt?: string;
   chainNote?: string;
   createdAt: string;
 }
@@ -137,6 +169,9 @@ export interface DisclosureRecord {
   onChainCommitmentCommitmentHash?: string;
   onChainCertificateId?: string;
   onChainTxId?: string;
+  verificationStatus: VerificationStatus;
+  rewardStatus: RewardStatus;
+  rewardAmount: number;
   disclosed: {
     passed: boolean;
     scoreBand: string;
@@ -174,6 +209,46 @@ export interface ReviewerPolicyRecord {
   active: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface RewardApprovalRecord {
+  commitmentId: string;
+  reviewId: string;
+  questId: string;
+  spaceId: string;
+  walletAddress: string;
+  artifactUrl: string;
+  reviewScore: number;
+  reviewPassed: boolean;
+  verificationStatus: VerificationStatus;
+  rewardStatus: RewardStatus;
+  rewardMode: RewardMode;
+  rewardAmount: number;
+  createdAt: string;
+  approvedAt?: string;
+  approvedBy?: string;
+  claimedAt?: string;
+  claimedBy?: string;
+}
+
+export interface RewardDecisionRequest {
+  status?: "approved" | "rejected";
+  decidedBy?: string;
+  adminNotes?: string;
+  walletApprovalSignature?: string;
+  walletApprovalData?: string;
+  walletApprovalVerifyingKey?: string;
+  completionDecisionTxId?: string;
+  escrowDecisionTxId?: string;
+}
+
+export interface RewardClaimRequest {
+  walletAddress?: string;
+  walletApprovalSignature?: string;
+  walletApprovalData?: string;
+  walletApprovalVerifyingKey?: string;
+  escrowClaimTxId?: string;
+  completionClaimTxId?: string;
 }
 
 export interface QuestRecord {

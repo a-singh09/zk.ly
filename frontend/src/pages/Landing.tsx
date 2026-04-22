@@ -70,6 +70,9 @@ export default function Landing() {
     const x = event.clientX - rect.left;
     const y = event.clientY - rect.top;
 
+    event.currentTarget.style.setProperty("--mouse-x", `${x}px`);
+    event.currentTarget.style.setProperty("--mouse-y", `${y}px`);
+
     const rotateY = ((x / rect.width) * 2 - 1) * 5;
     const rotateX = -(((y / rect.height) * 2 - 1) * 3);
 
@@ -133,6 +136,37 @@ export default function Landing() {
         onMouseMove={handleHeroMove}
         onMouseLeave={handleHeroLeave}
       >
+        <div 
+          className="absolute inset-0 pointer-events-none z-0 select-none"
+          style={{
+            maskImage: `radial-gradient(700px circle at var(--mouse-x, 50%) var(--mouse-y, 50%), 
+              black 0%, 
+              rgba(0,0,0,0.7) 8%, 
+              transparent 12%, 
+              rgba(0,0,0,0.4) 16%, 
+              transparent 20%, 
+              rgba(0,0,0,0.15) 24%, 
+              transparent 32%)`,
+            WebkitMaskImage: `radial-gradient(700px circle at var(--mouse-x, 50%) var(--mouse-y, 50%), 
+              black 0%, 
+              rgba(0,0,0,0.7) 8%, 
+              transparent 12%, 
+              rgba(0,0,0,0.4) 16%, 
+              transparent 20%, 
+              rgba(0,0,0,0.15) 24%, 
+              transparent 32%)`,
+          }}
+        >
+          <div className="w-full h-[120%] -translate-y-[10%] overflow-hidden opacity-50 flex">
+            <p 
+              className="text-bright-blue font-mono text-[10px] sm:text-xs font-semibold tracking-[0.3em] leading-loose break-all w-full text-justify"
+              style={{ textShadow: "0 0 8px currentColor" }}
+            >
+              {Array(3000).fill("zk").join(" · ")}
+            </p>
+          </div>
+        </div>
+
         <div className="absolute top-0 right-0 w-1/3 h-full border-l border-white/5 opacity-50 pointer-events-none" />
         <div className="absolute bottom-0 left-0 w-full h-1/3 border-t border-white/5 opacity-50 pointer-events-none" />
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] border border-white/10 rotate-45 pointer-events-none" />

@@ -1,0 +1,164 @@
+pragma language_version >= 0.22;
+import CompactStandardLibrary;
+
+export enum RewardReservationStatus { NONE, RESERVED, REJECTED, CLAIMED }
+
+export struct QuestEscrowConfig {
+  quest_id: Bytes<32>;
+  admin_key: Bytes<32>;
+  asset_contract: Bytes<32>;
+  total_budget: Uint<64>;
+  reserved_budget: Uint<64>;
+  claimed_budget: Uint<64>;
+  default_reward_amount: Uint<64>;
+  active: Boolean;
+}
+
+export struct RewardReservation {
+  cert_id: Bytes<32>;
+  quest_id: Bytes<32>;
+  completer_key: Bytes<32>;
+  amount: Uint<64>;
+  status: RewardReservationStatus;
+  approved_at_slot: Uint<64>;
+  claimed_at_slot: Uint<64>;
+}
+
+export ledger escrows: Map<Bytes<32>, QuestEscrowConfig>;
+export ledger reservations: Map<Bytes<32>, RewardReservation>;
+
+witness get_admin_secret_key(): Bytes<32>;
+witness get_user_secret_key(): Bytes<32>;
+
+pure circuit derive_actor_key(label: Bytes<32>, sk: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<2, Bytes<32>>>([label, sk]);
+}
+
+export circuit configure_quest_escrow(
+  quest_id: Bytes<32>,
+  asset_contract: Bytes<32>,
+  total_budget: Uint<64>,
+  default_reward_amount: Uint<64>
+): [] {
+  const admin_sk = get_admin_secret_key();
+  const admin_key = derive_actor_key(pad(32, "zkquest:creator:"), admin_sk);
+  const public_quest_id = disclose(quest_id);
+
+  assert(total_budget > 0, "Escrow budget must be positive");
+  assert(default_reward_amount > 0, "Default reward amount must be positive");
+
+  escrows.insert(public_quest_id, QuestEscrowConfig {
+    quest_id: public_quest_id,
+    admin_key: disclose(admin_key),
+    asset_contract: disclose(asset_contract),
+    total_budget: disclose(total_budget),
+    reserved_budget: 0,
+    claimed_budget: 0,
+    default_reward_amount: disclose(default_reward_amount),
+    active: disclose(true)
+  });
+}
+
+export circuit approve_reward(
+  cert_id: Bytes<32>,
+  quest_id: Bytes<32>,
+  completer_key: Bytes<32>,
+  amount: Uint<64>,
+  approved_at_slot: Uint<64>
+): [] {
+  const admin_sk = get_admin_secret_key();
+  const admin_key = derive_actor_key(pad(32, "zkquest:creator:"), admin_sk);
+  const public_quest_id = disclose(quest_id);
+  const escrow = escrows.lookup(public_quest_id);
+  const public_cert_id = disclose(cert_id);
+
+  assert(escrow.active, "Escrow inactive");
+  assert(admin_key == escrow.admin_key, "Only quest admin can approve reward");
+  assert(amount > 0, "Reward amount must be positive");
+  assert(
+    (escrow.reserved_budget + amount) as Uint<64> <= escrow.total_budget,
+    "Escrow budget exhausted"
+  );
+
+  escrows.insert(public_quest_id, QuestEscrowConfig {
+    quest_id: escrow.quest_id,
+    admin_key: escrow.admin_key,
+    asset_contract: escrow.asset_contract,
+    total_budget: escrow.total_budget,
+    reserved_budget: disclose((escrow.reserved_budget + amount) as Uint<64>),
+    claimed_budget: escrow.claimed_budget,
+    default_reward_amount: escrow.default_reward_amount,
+    active: escrow.active
+  });
+
+  reservations.insert(public_cert_id, RewardReservation {
+    cert_id: public_cert_id,
+    quest_id: public_quest_id,
+    completer_key: disclose(completer_key),
+    amount: disclose(amount),
+    status: disclose(RewardReservationStatus.RESERVED),
+    approved_at_slot: disclose(approved_at_slot),
+    claimed_at_slot: 0
+  });
+}
+
+export circuit reject_reward(
+  cert_id: Bytes<32>,
+  quest_id: Bytes<32>,
+  completer_key: Bytes<32>,
+  approved_at_slot: Uint<64>
+): [] {
+  const admin_sk = get_admin_secret_key();
+  const admin_key = derive_actor_key(pad(32, "zkquest:creator:"), admin_sk);
+  const escrow = escrows.lookup(disclose(quest_id));
+
+  assert(escrow.active, "Escrow inactive");
+  assert(admin_key == escrow.admin_key, "Only quest admin can reject reward");
+
+  reservations.insert(disclose(cert_id), RewardReservation {
+    cert_id: disclose(cert_id),
+    quest_id: disclose(quest_id),
+    completer_key: disclose(completer_key),
+    amount: 0,
+    status: disclose(RewardReservationStatus.REJECTED),
+    approved_at_slot: disclose(approved_at_slot),
+    claimed_at_slot: 0
+  });
+}
+
+export circuit claim_reward(
+  cert_id: Bytes<32>,
+  claimed_at_slot: Uint<64>
+): [] {
+  const user_sk = get_user_secret_key();
+  const reservation = reservations.lookup(disclose(cert_id));
+  const escrow = escrows.lookup(reservation.quest_id);
+  const claimer_key = derive_actor_key(
+    pad(32, "zkquest:completer:"),
+    user_sk
+  );
+
+  assert(reservation.status == RewardReservationStatus.RESERVED, "Reward not reserved");
+  assert(claimer_key == reservation.completer_key, "Only recipient can claim");
+
+  escrows.insert(reservation.quest_id, QuestEscrowConfig {
+    quest_id: escrow.quest_id,
+    admin_key: escrow.admin_key,
+    asset_contract: escrow.asset_contract,
+    total_budget: escrow.total_budget,
+    reserved_budget: escrow.reserved_budget,
+    claimed_budget: disclose((escrow.claimed_budget + reservation.amount) as Uint<64>),
+    default_reward_amount: escrow.default_reward_amount,
+    active: escrow.active
+  });
+
+  reservations.insert(disclose(cert_id), RewardReservation {
+    cert_id: reservation.cert_id,
+    quest_id: reservation.quest_id,
+    completer_key: reservation.completer_key,
+    amount: reservation.amount,
+    status: disclose(RewardReservationStatus.CLAIMED),
+    approved_at_slot: reservation.approved_at_slot,
+    claimed_at_slot: disclose(claimed_at_slot)
+  });
+}

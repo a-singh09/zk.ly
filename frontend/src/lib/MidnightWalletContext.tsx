@@ -310,7 +310,14 @@ export function MidnightWalletProvider({ children }: { children: ReactNode }) {
       }),
       API_TIMEOUT_MS,
       "Wallet signing popup timed out or was rejected.",
-    );
+    ).catch((error: unknown) => {
+      if (error instanceof Error && /Method not implemented/i.test(error.message)) {
+        throw new Error(
+          "This Midnight wallet build does not expose signData through the DApp connector yet.",
+        );
+      }
+      throw error;
+    });
 
     return {
       signature: signature.signature,
@@ -343,7 +350,13 @@ export function MidnightWalletProvider({ children }: { children: ReactNode }) {
       API_TIMEOUT_MS,
       "Timed out fetching wallet service configuration.",
     );
-    return cfg;
+    return {
+      indexerUri: cfg.indexerUri,
+      indexerWsUri: cfg.indexerWsUri,
+      proverServerUri: cfg.proverServerUri ?? "http://127.0.0.1:6300",
+      substrateNodeUri: cfg.substrateNodeUri,
+      networkId: cfg.networkId,
+    };
   };
 
   const value = useMemo<MidnightWalletContextValue>(

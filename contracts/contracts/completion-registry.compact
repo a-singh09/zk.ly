@@ -1,26 +1,32 @@
 pragma language_version >= 0.22;
 import CompactStandardLibrary;
 
-export enum CompletionStatus { VERIFIED, REJECTED, REVOKED }
+export enum CompletionStatus { PENDING_ADMIN, APPROVED, REJECTED, CLAIMED }
 
 export struct CompletionCert {
   quest_id: Bytes<32>;
   sprint_id: Bytes<32>;
   space_id: Bytes<32>;
   completer_key: Bytes<32>;
+  admin_key: Bytes<32>;
   evidence_class: Bytes<8>;
   status: CompletionStatus;
   issued_at_slot: Uint<64>;
   xp_awarded: Uint<16>;
+  reward_amount: Uint<64>;
   passed_flag: Boolean;
   score_band: Uint<8>;
   review_commitment: Bytes<32>;
   commitment_commitment: Bytes<32>;
+  decision_slot: Uint<64>;
+  claim_slot: Uint<64>;
+  payout_reference: Bytes<32>;
 }
 
 export ledger completions: Map<Bytes<32>, CompletionCert>;
 
 witness get_user_secret_key(): Bytes<32>;
+witness get_admin_secret_key(): Bytes<32>;
 witness get_evidence_hash(): Bytes<32>;
 witness get_evidence_class_raw(): Bytes<8>;
 witness get_verification_score(): Uint<32>;
@@ -35,10 +41,15 @@ witness get_commitment_payload(): Bytes<256>;
 witness get_passed_flag(): Boolean;
 witness get_score_band(): Uint<8>;
 
+pure circuit derive_actor_key(label: Bytes<32>, sk: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<2, Bytes<32>>>([label, sk]);
+}
+
 export circuit verify_completion(
   quest_id: Bytes<32>,
   sprint_id: Bytes<32>,
   space_id: Bytes<32>,
+  admin_key: Bytes<32>,
   on_chain_commitment: Bytes<32>,
   xp_value: Uint<16>
 ): Bytes<32> {
@@ -60,19 +71,19 @@ export circuit verify_completion(
   const computed_commitment = persistentHash<Bytes<256>>(crit_bytes);
   assert(computed_commitment == on_chain_commitment, "Criteria mismatch");
 
+  assert(evidence_hash == get_evidence_hash(), "Evidence hash mismatch");
   assert(evid_class == req_class, "Evidence class mismatch");
   assert(score >= min_score, "Score below threshold");
 
-  const completer_key = persistentHash<Vector<2, Bytes<32>>>([
+  const completer_key = derive_actor_key(
     pad(32, "zkquest:completer:"),
     user_sk
-  ]);
+  );
 
   assert(
     freq_slots == 0 ||
     last_slot == 0 ||
-    curr_slot >= (last_slot + freq_slots) as Uint<64>
-    ,
+    curr_slot >= (last_slot + freq_slots) as Uint<64>,
     "Frequency limit not met"
   );
 
@@ -83,6 +94,7 @@ export circuit verify_completion(
 
   const public_quest_id = disclose(quest_id);
   const public_completer_key = disclose(completer_key);
+  const public_admin_key = disclose(admin_key);
   const public_review_commitment = disclose(review_commitment);
   const public_commitment_commitment = disclose(commitment_commitment);
 
@@ -97,15 +109,128 @@ export circuit verify_completion(
     sprint_id: disclose(sprint_id),
     space_id: disclose(space_id),
     completer_key: public_completer_key,
+    admin_key: public_admin_key,
     evidence_class: disclose(evid_class),
-    status: disclose(CompletionStatus.VERIFIED),
+    status: disclose(CompletionStatus.PENDING_ADMIN),
     issued_at_slot: disclose(curr_slot),
     xp_awarded: disclose(xp_value),
+    reward_amount: 0,
     passed_flag: disclose(passed_flag),
     score_band: disclose(score_band),
     review_commitment: public_review_commitment,
-    commitment_commitment: public_commitment_commitment
+    commitment_commitment: public_commitment_commitment,
+    decision_slot: 0,
+    claim_slot: 0,
+    payout_reference: pad(32, "")
   });
 
   return disclose(cert_id);
+}
+
+export circuit approve_completion(
+  cert_id: Bytes<32>,
+  reward_amount: Uint<64>,
+  decision_slot: Uint<64>
+): [] {
+  const admin_sk = get_admin_secret_key();
+  const cert = completions.lookup(disclose(cert_id));
+  const approver_key = derive_actor_key(
+    pad(32, "zkquest:creator:"),
+    admin_sk
+  );
+
+  assert(cert.status == CompletionStatus.PENDING_ADMIN, "Completion not pending");
+  assert(approver_key == cert.admin_key, "Only quest admin can approve");
+  assert(reward_amount > 0, "Reward amount must be positive");
+
+  completions.insert(disclose(cert_id), CompletionCert {
+    quest_id: cert.quest_id,
+    sprint_id: cert.sprint_id,
+    space_id: cert.space_id,
+    completer_key: cert.completer_key,
+    admin_key: cert.admin_key,
+    evidence_class: cert.evidence_class,
+    status: disclose(CompletionStatus.APPROVED),
+    issued_at_slot: cert.issued_at_slot,
+    xp_awarded: cert.xp_awarded,
+    reward_amount: disclose(reward_amount),
+    passed_flag: cert.passed_flag,
+    score_band: cert.score_band,
+    review_commitment: cert.review_commitment,
+    commitment_commitment: cert.commitment_commitment,
+    decision_slot: disclose(decision_slot),
+    claim_slot: cert.claim_slot,
+    payout_reference: cert.payout_reference
+  });
+}
+
+export circuit reject_completion(
+  cert_id: Bytes<32>,
+  decision_slot: Uint<64>
+): [] {
+  const admin_sk = get_admin_secret_key();
+  const cert = completions.lookup(disclose(cert_id));
+  const approver_key = derive_actor_key(
+    pad(32, "zkquest:creator:"),
+    admin_sk
+  );
+
+  assert(cert.status == CompletionStatus.PENDING_ADMIN, "Completion not pending");
+  assert(approver_key == cert.admin_key, "Only quest admin can reject");
+
+  completions.insert(disclose(cert_id), CompletionCert {
+    quest_id: cert.quest_id,
+    sprint_id: cert.sprint_id,
+    space_id: cert.space_id,
+    completer_key: cert.completer_key,
+    admin_key: cert.admin_key,
+    evidence_class: cert.evidence_class,
+    status: disclose(CompletionStatus.REJECTED),
+    issued_at_slot: cert.issued_at_slot,
+    xp_awarded: cert.xp_awarded,
+    reward_amount: 0,
+    passed_flag: cert.passed_flag,
+    score_band: cert.score_band,
+    review_commitment: cert.review_commitment,
+    commitment_commitment: cert.commitment_commitment,
+    decision_slot: disclose(decision_slot),
+    claim_slot: cert.claim_slot,
+    payout_reference: cert.payout_reference
+  });
+}
+
+export circuit mark_reward_claimed(
+  cert_id: Bytes<32>,
+  claim_slot: Uint<64>,
+  payout_reference: Bytes<32>
+): [] {
+  const user_sk = get_user_secret_key();
+  const cert = completions.lookup(disclose(cert_id));
+  const claimer_key = derive_actor_key(
+    pad(32, "zkquest:completer:"),
+    user_sk
+  );
+
+  assert(cert.status == CompletionStatus.APPROVED, "Completion not claimable");
+  assert(claimer_key == cert.completer_key, "Only completer can claim");
+
+  completions.insert(disclose(cert_id), CompletionCert {
+    quest_id: cert.quest_id,
+    sprint_id: cert.sprint_id,
+    space_id: cert.space_id,
+    completer_key: cert.completer_key,
+    admin_key: cert.admin_key,
+    evidence_class: cert.evidence_class,
+    status: disclose(CompletionStatus.CLAIMED),
+    issued_at_slot: cert.issued_at_slot,
+    xp_awarded: cert.xp_awarded,
+    reward_amount: cert.reward_amount,
+    passed_flag: cert.passed_flag,
+    score_band: cert.score_band,
+    review_commitment: cert.review_commitment,
+    commitment_commitment: cert.commitment_commitment,
+    decision_slot: cert.decision_slot,
+    claim_slot: disclose(claim_slot),
+    payout_reference: disclose(payout_reference)
+  });
 }

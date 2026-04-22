@@ -100,6 +100,10 @@ function defaultWitnessesForContract(name: string) {
         context.privateState,
         zeroBytes(32),
       ],
+      get_admin_secret_key: (context: any) => [
+        context.privateState,
+        zeroBytes(32),
+      ],
       get_evidence_hash: (context: any) => [
         context.privateState,
         zeroBytes(32),
@@ -143,6 +147,19 @@ function defaultWitnessesForContract(name: string) {
       get_criteria_bytes: (context: any) => [
         context.privateState,
         zeroBytes(256),
+      ],
+    };
+  }
+
+  if (name === "reward-escrow") {
+    return {
+      get_admin_secret_key: (context: any) => [
+        context.privateState,
+        zeroBytes(32),
+      ],
+      get_user_secret_key: (context: any) => [
+        context.privateState,
+        zeroBytes(32),
       ],
     };
   }

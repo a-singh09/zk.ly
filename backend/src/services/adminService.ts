@@ -1,7 +1,11 @@
 import type {
+  CommitmentRecord,
   EscalationDecisionRequest,
   EscalationRecord,
   EscalationRequest,
+  QuestRecord,
+  RewardClaimRequest,
+  RewardDecisionRequest,
   ReviewerPolicyCreateRequest,
   ReviewerPolicyRecord,
   ReviewerPolicyUpdateRequest,
@@ -48,6 +52,93 @@ export function applyEscalationDecision(
       payload.resolutionSummary?.trim() || escalation.resolutionSummary,
     decidedBy: payload.decidedBy?.trim() || escalation.decidedBy,
     resolvedAt: new Date().toISOString(),
+  };
+}
+
+export function applyRewardDecision(
+  commitment: CommitmentRecord,
+  quest: QuestRecord,
+  payload: RewardDecisionRequest,
+): CommitmentRecord {
+  if (payload.status !== "approved" && payload.status !== "rejected") {
+    throw new Error("status must be approved or rejected");
+  }
+
+  if (payload.status === "approved") {
+    return {
+      ...commitment,
+      verificationStatus:
+        quest.rewardMode === "escrow-auto" ? "approved" : "approved",
+      rewardStatus:
+        quest.rewardMode === "escrow-auto" ? "claimable" : commitment.rewardStatus,
+      adminApprovalSignature:
+        payload.walletApprovalSignature?.trim() ||
+        commitment.adminApprovalSignature,
+      adminApprovalData:
+        payload.walletApprovalData?.trim() || commitment.adminApprovalData,
+      adminApprovalVerifyingKey:
+        payload.walletApprovalVerifyingKey?.trim() ||
+        commitment.adminApprovalVerifyingKey,
+      completionDecisionTxId:
+        payload.completionDecisionTxId?.trim() ||
+        commitment.completionDecisionTxId,
+      escrowDecisionTxId:
+        payload.escrowDecisionTxId?.trim() || commitment.escrowDecisionTxId,
+      approvedBy: payload.decidedBy?.trim() || commitment.approvedBy,
+      approvedAt: new Date().toISOString(),
+      chainNote:
+        quest.rewardMode === "escrow-auto"
+          ? `Admin approved the completion on-chain${payload.escrowDecisionTxId ? " and reserved escrow funds" : ""}. Reward is now claimable from escrow through the user's wallet.`
+          : "Admin approved the completion on-chain. XP-only quest is finalized with no escrow claim required.",
+    };
+  }
+
+  return {
+    ...commitment,
+    verificationStatus: "rejected",
+    rewardStatus:
+      quest.rewardMode === "escrow-auto" ? "rejected" : commitment.rewardStatus,
+    rejectedBy: payload.decidedBy?.trim() || commitment.rejectedBy,
+    rejectedAt: new Date().toISOString(),
+    chainNote:
+      "Admin rejected the completion after review. No escrow reward can be claimed.",
+  };
+}
+
+export function applyRewardClaim(
+  commitment: CommitmentRecord,
+  payload: RewardClaimRequest,
+): CommitmentRecord {
+  if (commitment.rewardStatus !== "claimable") {
+    throw new Error("reward is not claimable");
+  }
+
+  const walletAddress = payload.walletAddress?.trim();
+  if (!walletAddress) {
+    throw new Error("walletAddress is required");
+  }
+
+  if (walletAddress !== commitment.walletAddress) {
+    throw new Error("reward claim must be submitted by the original wallet");
+  }
+
+  return {
+    ...commitment,
+    verificationStatus: "claimed",
+    rewardStatus: "claimed",
+    claimSignature:
+      payload.walletApprovalSignature?.trim() || commitment.claimSignature,
+    claimData: payload.walletApprovalData?.trim() || commitment.claimData,
+    claimVerifyingKey:
+      payload.walletApprovalVerifyingKey?.trim() || commitment.claimVerifyingKey,
+    escrowClaimTxId:
+      payload.escrowClaimTxId?.trim() || commitment.escrowClaimTxId,
+    completionClaimTxId:
+      payload.completionClaimTxId?.trim() || commitment.completionClaimTxId,
+    claimedBy: walletAddress,
+    claimedAt: new Date().toISOString(),
+    chainNote:
+      "User claimed an admin-approved escrow reward with connector-submitted on-chain transactions.",
   };
 }
 

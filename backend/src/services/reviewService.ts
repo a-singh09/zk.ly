@@ -4,6 +4,7 @@ import type {
   CommitmentRecord,
   CommitmentRequest,
   DisclosureRecord,
+  QuestRecord,
   QuestTrack,
   ReviewRecord,
   ReviewRequest,
@@ -261,6 +262,7 @@ export async function createReview(
 export function createCommitment(
   review: ReviewRecord,
   input: CommitmentRequest,
+  quest?: QuestRecord,
 ): CommitmentRecord {
   const walletAddress =
     input.walletAddress?.trim() || "pending-wallet-authorization";
@@ -300,6 +302,7 @@ export function createCommitment(
   return {
     commitmentId,
     reviewId: review.reviewId,
+    questId: review.questId,
     walletAddress,
     authorizationMode,
     commitmentHash: `0x${commitmentHash}`,
@@ -307,6 +310,10 @@ export function createCommitment(
     selectiveDisclosureHash: `0x${selectiveDisclosureHash}`,
     proofMode: "mock",
     status: "pending-chain",
+    verificationStatus: "pending-admin",
+    rewardStatus: quest?.rewardMode === "escrow-auto" ? "awaiting-admin" : "none",
+    rewardMode: quest?.rewardMode ?? "xp-only",
+    rewardAmount: quest?.escrowAmount ?? quest?.reward ?? 0,
     createdAt: new Date().toISOString(),
   };
 }
@@ -331,6 +338,9 @@ export function toDisclosureRecord(
     onChainCommitmentCommitmentHash: commitment.onChainCommitmentCommitmentHash,
     onChainCertificateId: commitment.onChainCertificateId,
     onChainTxId: commitment.onChainTxId,
+    verificationStatus: commitment.verificationStatus,
+    rewardStatus: commitment.rewardStatus,
+    rewardAmount: commitment.rewardAmount,
     disclosed: {
       passed: review.passed,
       scoreBand: toScoreBand(review.score),

@@ -30,6 +30,7 @@ export interface AiReviewResponse {
 export interface CommitmentResponse {
   commitmentId: string;
   reviewId: string;
+  questId: string;
   walletAddress: string;
   authorizationMode: string;
   walletApprovalSignature?: string;
@@ -45,9 +46,22 @@ export interface CommitmentResponse {
   onChainTxId?: string;
   proofMode: "mock" | "midnight";
   status: "authorized" | "pending-chain";
+  verificationStatus: "pending-admin" | "approved" | "rejected" | "claimed";
+  rewardStatus: "none" | "awaiting-admin" | "claimable" | "claimed" | "rejected";
+  rewardMode: RewardMode;
+  rewardAmount: number;
+  approvedBy?: string;
+  approvedAt?: string;
+  completionDecisionTxId?: string;
+  escrowDecisionTxId?: string;
+  claimedBy?: string;
+  claimedAt?: string;
+  escrowClaimTxId?: string;
+  completionClaimTxId?: string;
   createdAt: string;
   chainNote: string;
   review?: AiReviewResponse;
+  quest?: QuestRecord;
   disclosure?: DisclosureRecord;
 }
 
@@ -85,6 +99,9 @@ export interface DisclosureRecord {
   onChainCommitmentCommitmentHash?: string;
   onChainCertificateId?: string;
   onChainTxId?: string;
+  verificationStatus: "pending-admin" | "approved" | "rejected" | "claimed";
+  rewardStatus: "none" | "awaiting-admin" | "claimable" | "claimed" | "rejected";
+  rewardAmount: number;
   disclosed: {
     passed: boolean;
     scoreBand: string;
@@ -128,6 +145,26 @@ export interface ReviewerPolicyRecord {
   active: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface RewardApprovalRecord {
+  commitmentId: string;
+  reviewId: string;
+  questId: string;
+  spaceId: string;
+  walletAddress: string;
+  artifactUrl: string;
+  reviewScore: number;
+  reviewPassed: boolean;
+  verificationStatus: "pending-admin" | "approved" | "rejected" | "claimed";
+  rewardStatus: "none" | "awaiting-admin" | "claimable" | "claimed" | "rejected";
+  rewardMode: RewardMode;
+  rewardAmount: number;
+  createdAt: string;
+  approvedAt?: string;
+  approvedBy?: string;
+  claimedAt?: string;
+  claimedBy?: string;
 }
 
 export interface QuestRecord {
@@ -300,6 +337,12 @@ export function getAdminEscalations() {
   return requestJson<{ items: EscalationRecord[] }>("/api/admin/escalations");
 }
 
+export function getAdminRewardApprovals() {
+  return requestJson<{ items: RewardApprovalRecord[] }>(
+    "/api/admin/reward-approvals",
+  );
+}
+
 export function decideEscalation(
   escalationId: string,
   payload: {
@@ -316,6 +359,45 @@ export function decideEscalation(
       body: JSON.stringify(payload),
     },
   );
+}
+
+export function decideRewardApproval(
+  commitmentId: string,
+  payload: {
+    status: "approved" | "rejected";
+    decidedBy?: string;
+    adminNotes?: string;
+    walletApprovalSignature?: string;
+    walletApprovalData?: string;
+    walletApprovalVerifyingKey?: string;
+    completionDecisionTxId?: string;
+    escrowDecisionTxId?: string;
+  },
+) {
+  return requestJson<CommitmentResponse>(
+    `/api/admin/reward-approvals/${commitmentId}/decision`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
+export function claimReward(
+  commitmentId: string,
+  payload: {
+    walletAddress: string;
+    walletApprovalSignature?: string;
+    walletApprovalData?: string;
+    walletApprovalVerifyingKey?: string;
+    escrowClaimTxId?: string;
+    completionClaimTxId?: string;
+  },
+) {
+  return requestJson<CommitmentResponse>(`/api/commitments/${commitmentId}/claim`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
 
 export function getReviewerPolicies() {

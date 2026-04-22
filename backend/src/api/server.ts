@@ -4,6 +4,9 @@ import type {
   CommitmentRequest,
   EscalationDecisionRequest,
   EscalationRequest,
+  RewardApprovalRecord,
+  RewardClaimRequest,
+  RewardDecisionRequest,
   QuestCreateRequest,
   QuestRecord,
   QuestTrack,
@@ -31,6 +34,8 @@ import {
   toDisclosureRecord,
 } from "../services/reviewService.js";
 import {
+  applyRewardClaim,
+  applyRewardDecision,
   applyEscalationDecision,
   createEscalation,
   createReviewerPolicy,
@@ -39,6 +44,50 @@ import {
 import { getMidnightStatus } from "../services/midnightService.js";
 
 const PORT = Number(process.env.PORT ?? 8787);
+
+function toRewardApprovalRecord(
+  quest: QuestRecord,
+  review: {
+    reviewId: string;
+    spaceId: string;
+    artifactUrl: string;
+    score: number;
+    passed: boolean;
+  },
+  commitment: {
+    commitmentId: string;
+    walletAddress: string;
+    verificationStatus: RewardApprovalRecord["verificationStatus"];
+    rewardStatus: RewardApprovalRecord["rewardStatus"];
+    rewardMode: RewardApprovalRecord["rewardMode"];
+    rewardAmount: number;
+    createdAt: string;
+    approvedAt?: string;
+    approvedBy?: string;
+    claimedAt?: string;
+    claimedBy?: string;
+  },
+): RewardApprovalRecord {
+  return {
+    commitmentId: commitment.commitmentId,
+    reviewId: review.reviewId,
+    questId: quest.id,
+    spaceId: review.spaceId,
+    walletAddress: commitment.walletAddress,
+    artifactUrl: review.artifactUrl,
+    reviewScore: review.score,
+    reviewPassed: review.passed,
+    verificationStatus: commitment.verificationStatus,
+    rewardStatus: commitment.rewardStatus,
+    rewardMode: commitment.rewardMode,
+    rewardAmount: commitment.rewardAmount,
+    createdAt: commitment.createdAt,
+    approvedAt: commitment.approvedAt,
+    approvedBy: commitment.approvedBy,
+    claimedAt: commitment.claimedAt,
+    claimedBy: commitment.claimedBy,
+  };
+}
 
 const VALID_QUEST_TYPES: QuestRecord["type"][] = [
   "blog",
@@ -260,7 +309,7 @@ const server = createServer(async (request, response) => {
       }
 
       const quest = quests.get(review.questId);
-      const baseCommitment = createCommitment(review, body);
+      const baseCommitment = createCommitment(review, body, quest);
 
       const walletApprovalSignature = body.walletApprovalSignature?.trim();
       const walletApprovalData = body.walletApprovalData?.trim();
@@ -309,6 +358,7 @@ const server = createServer(async (request, response) => {
       sendJson(response, 200, {
         ...commitment,
         review,
+        quest,
         disclosure: toDisclosureRecord(review, commitment),
         chainNote,
       });
@@ -342,8 +392,119 @@ const server = createServer(async (request, response) => {
     sendJson(response, 200, {
       ...commitment,
       review,
+      quest: quests.get(review.questId),
       disclosure: toDisclosureRecord(review, commitment),
     });
+    return;
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/admin/reward-approvals") {
+    const items = Array.from(commitments.values())
+      .map((commitment) => {
+        const review = reviews.get(commitment.reviewId);
+        if (!review) return null;
+        const quest = quests.get(review.questId);
+        if (!quest) return null;
+        return toRewardApprovalRecord(quest, review, commitment);
+      })
+      .filter((item): item is RewardApprovalRecord => item !== null)
+      .sort((a, b) => {
+        const rank = (status: RewardApprovalRecord["verificationStatus"]) => {
+          if (status === "pending-admin") return 0;
+          if (status === "approved") return 1;
+          if (status === "claimed") return 2;
+          return 3;
+        };
+        return rank(a.verificationStatus) - rank(b.verificationStatus);
+      });
+
+    sendJson(response, 200, { items });
+    return;
+  }
+
+  if (
+    request.method === "POST" &&
+    url.pathname.match(/^\/api\/admin\/reward-approvals\/[^/]+\/decision$/)
+  ) {
+    try {
+      const commitmentId = url.pathname.split("/")[4] ?? "";
+      const commitment = commitments.get(commitmentId);
+      if (!commitment) {
+        sendJson(response, 404, { error: "Commitment not found" });
+        return;
+      }
+
+      const review = reviews.get(commitment.reviewId);
+      if (!review) {
+        sendJson(response, 404, { error: "Review not found" });
+        return;
+      }
+
+      const quest = quests.get(review.questId);
+      if (!quest) {
+        sendJson(response, 404, { error: "Quest not found" });
+        return;
+      }
+
+      const body = (await readJsonBody(request)) as RewardDecisionRequest;
+      const updated = applyRewardDecision(commitment, quest, body);
+      commitments.set(commitmentId, updated);
+
+      sendJson(response, 200, {
+        ...updated,
+        review,
+        quest,
+        disclosure: toDisclosureRecord(review, updated),
+      });
+    } catch (error) {
+      sendJson(response, 400, {
+        error: "Could not apply reward decision",
+        details: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+    return;
+  }
+
+  if (
+    request.method === "POST" &&
+    url.pathname.match(/^\/api\/commitments\/[^/]+\/claim$/)
+  ) {
+    try {
+      const commitmentId = url.pathname.split("/")[3] ?? "";
+      const commitment = commitments.get(commitmentId);
+      if (!commitment) {
+        sendJson(response, 404, { error: "Commitment not found" });
+        return;
+      }
+
+      const review = reviews.get(commitment.reviewId);
+      if (!review) {
+        sendJson(response, 404, { error: "Review not found" });
+        return;
+      }
+
+      const quest = quests.get(review.questId);
+      if (!quest) {
+        sendJson(response, 404, { error: "Quest not found" });
+        return;
+      }
+
+      const body = (await readJsonBody(request)) as RewardClaimRequest;
+      const updated = applyRewardClaim(commitment, body);
+      commitments.set(commitmentId, updated);
+
+      sendJson(response, 200, {
+        ...updated,
+        review,
+        quest,
+        disclosure: toDisclosureRecord(review, updated),
+      });
+    } catch (error) {
+      sendJson(response, 400, {
+        error: "Could not claim reward",
+        details: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
     return;
   }
 
@@ -784,6 +945,13 @@ const server = createServer(async (request, response) => {
     >();
 
     for (const commitment of commitments.values()) {
+      if (
+        commitment.verificationStatus !== "approved" &&
+        commitment.verificationStatus !== "claimed"
+      ) {
+        continue;
+      }
+
       const review = reviews.get(commitment.reviewId);
       if (!review) continue;
 
@@ -842,6 +1010,13 @@ const server = createServer(async (request, response) => {
     let xpPublic = 0;
 
     for (const commitment of relatedCommitments) {
+      if (
+        commitment.verificationStatus !== "approved" &&
+        commitment.verificationStatus !== "claimed"
+      ) {
+        continue;
+      }
+
       const review = reviews.get(commitment.reviewId);
       if (!review) continue;
 

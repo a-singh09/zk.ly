@@ -4,6 +4,7 @@ import {
   Activity,
   AlertTriangle,
   CheckCircle2,
+  Coins,
   Plus,
   Shield,
   Settings,
@@ -14,23 +15,35 @@ import "prismjs/components/prism-json";
 import {
   createReviewerPolicy,
   createSpace,
+  decideRewardApproval,
   decideEscalation,
+  getCommitment,
   getAdminDisclosures,
   getAdminEscalations,
+  getAdminRewardApprovals,
   getReviewerPolicies,
   getSpaces,
   type DisclosureRecord,
   type EscalationRecord,
   type EscalationStatus,
+  type RewardApprovalRecord,
   type ReviewerPolicyRecord,
   type SpaceRecord,
 } from "../lib/api";
 import { useMidnightWallet } from "../lib/MidnightWalletContext";
+import { executeAdminRewardDecisionOnChain } from "../lib/midnightConnectorExecutor";
 
 const CodeEditor =
   (Editor as typeof Editor & { default?: typeof Editor }).default ?? Editor;
 
-const tabs = ["Overview", "Spaces", "Escalations", "Policies", "Disclosures"];
+const tabs = [
+  "Overview",
+  "Spaces",
+  "Rewards",
+  "Escalations",
+  "Policies",
+  "Disclosures",
+] as const;
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleString();
@@ -45,6 +58,9 @@ export default function AdminDashboard() {
   const [spaces, setSpaces] = useState<SpaceRecord[]>([]);
   const [disclosures, setDisclosures] = useState<DisclosureRecord[]>([]);
   const [escalations, setEscalations] = useState<EscalationRecord[]>([]);
+  const [rewardApprovals, setRewardApprovals] = useState<RewardApprovalRecord[]>(
+    [],
+  );
   const [policies, setPolicies] = useState<ReviewerPolicyRecord[]>([]);
 
   const [spaceName, setSpaceName] = useState("");
@@ -82,11 +98,19 @@ export default function AdminDashboard() {
   const [adminError, setAdminError] = useState<string | null>(null);
   const [adminMessage, setAdminMessage] = useState<string | null>(null);
 
-  const { walletAddress } = useMidnightWallet();
+  const { walletAddress, signWalletAuthorization, connectedWalletApi } =
+    useMidnightWallet();
 
   const pendingEscalations = useMemo(
     () => escalations.filter((item) => item.status === "pending-admin"),
     [escalations],
+  );
+  const pendingRewardApprovals = useMemo(
+    () =>
+      rewardApprovals.filter(
+        (item) => item.verificationStatus === "pending-admin",
+      ),
+    [rewardApprovals],
   );
 
   const loadAdminData = async () => {
@@ -96,17 +120,20 @@ export default function AdminDashboard() {
         spaceResponse,
         disclosureResponse,
         escalationResponse,
+        rewardApprovalResponse,
         policyResponse,
       ] = await Promise.all([
         getSpaces(),
         getAdminDisclosures(),
         getAdminEscalations(),
+        getAdminRewardApprovals(),
         getReviewerPolicies(),
       ]);
 
       setSpaces(spaceResponse.items);
       setDisclosures(disclosureResponse.items);
       setEscalations(escalationResponse.items);
+      setRewardApprovals(rewardApprovalResponse.items);
       setPolicies(policyResponse.items);
     } catch (error) {
       setAdminError(
@@ -183,6 +210,86 @@ export default function AdminDashboard() {
         error instanceof Error
           ? error.message
           : "Could not apply escalation decision",
+      );
+    }
+  };
+
+  const handleRewardDecision = async (
+    item: RewardApprovalRecord,
+    status: "approved" | "rejected",
+  ) => {
+    setAdminError(null);
+    setAdminMessage(null);
+
+    try {
+      const commitment = await getCommitment(item.commitmentId);
+      const approvalPayload = JSON.stringify({
+        action: "admin-reward-decision",
+        commitmentId: item.commitmentId,
+        status,
+        decidedBy: walletAddress ?? "admin-console",
+        issuedAt: new Date().toISOString(),
+      });
+
+      let walletApprovalSignature: string | undefined;
+      let walletApprovalData: string | undefined;
+      let walletApprovalVerifyingKey: string | undefined;
+
+      try {
+        const signed = await signWalletAuthorization(approvalPayload);
+        walletApprovalSignature = signed.signature;
+        walletApprovalData = signed.data;
+        walletApprovalVerifyingKey = signed.verifyingKey;
+      } catch {
+        // Keep wallet authorization optional while connector builds vary by capability.
+      }
+
+      const onChainResult = await executeAdminRewardDecisionOnChain({
+        connectedApi: connectedWalletApi,
+        walletAddress,
+        commitment,
+        status,
+      });
+
+      const updated = await decideRewardApproval(item.commitmentId, {
+        status,
+        decidedBy: walletAddress ?? "admin-console",
+        adminNotes:
+          status === "approved"
+            ? "Approved from the admin reward queue."
+            : "Rejected from the admin reward queue.",
+        walletApprovalSignature,
+        walletApprovalData,
+        walletApprovalVerifyingKey,
+        completionDecisionTxId: onChainResult.completionDecisionTxId,
+        escrowDecisionTxId: onChainResult.escrowDecisionTxId,
+      });
+
+      setRewardApprovals((previous) =>
+        previous.map((entry) =>
+          entry.commitmentId === updated.commitmentId
+            ? {
+                ...entry,
+                verificationStatus: updated.verificationStatus,
+                rewardStatus: updated.rewardStatus,
+                approvedAt: updated.approvedAt,
+                approvedBy: updated.approvedBy,
+                claimedAt: updated.claimedAt,
+                claimedBy: updated.claimedBy,
+              }
+            : entry,
+        ),
+      );
+      setAdminMessage(
+        status === "approved"
+          ? "Reward approved. User can now claim from escrow."
+          : "Reward rejected.",
+      );
+    } catch (error) {
+      setAdminError(
+        error instanceof Error
+          ? error.message
+          : "Could not apply reward decision",
       );
     }
   };
@@ -285,6 +392,14 @@ export default function AdminDashboard() {
           </div>
           <div className="border border-white/10 bg-[#161616] p-5">
             <div className="text-white/40 text-xs uppercase tracking-widest mb-2">
+              Pending Rewards
+            </div>
+            <div className="text-3xl font-black text-amber-300">
+              {pendingRewardApprovals.length}
+            </div>
+          </div>
+          <div className="border border-white/10 bg-[#161616] p-5">
+            <div className="text-white/40 text-xs uppercase tracking-widest mb-2">
               Pending Escalations
             </div>
             <div className="text-3xl font-black text-amber-300">
@@ -296,12 +411,6 @@ export default function AdminDashboard() {
               Disclosures
             </div>
             <div className="text-3xl font-black">{disclosures.length}</div>
-          </div>
-          <div className="border border-white/10 bg-[#161616] p-5">
-            <div className="text-white/40 text-xs uppercase tracking-widest mb-2">
-              Reviewer Policies
-            </div>
-            <div className="text-3xl font-black">{policies.length}</div>
           </div>
         </div>
 
@@ -346,6 +455,10 @@ export default function AdminDashboard() {
                   deterministic fallback.
                 </li>
                 <li>
+                  Reward queue now separates proof verification from escrow
+                  approval and user claim.
+                </li>
+                <li>
                   Escalation queue supports manual approve/reject workflow.
                 </li>
                 <li>
@@ -363,12 +476,26 @@ export default function AdminDashboard() {
                 <AlertTriangle size={18} className="text-amber-300" />
                 Attention Queue
               </h2>
-              {pendingEscalations.length === 0 ? (
-                <p className="text-sm text-white/60">
-                  No pending escalations right now.
-                </p>
+              {pendingRewardApprovals.length === 0 &&
+              pendingEscalations.length === 0 ? (
+                <p className="text-sm text-white/60">No pending admin work right now.</p>
               ) : (
                 <div className="space-y-3">
+                  {pendingRewardApprovals.slice(0, 2).map((item) => (
+                    <div
+                      key={item.commitmentId}
+                      className="border border-white/10 bg-[#0A0A0A] p-4"
+                    >
+                      <div className="text-xs uppercase tracking-widest text-white/40 mb-2">
+                        Reward Approval
+                      </div>
+                      <div className="text-sm text-white/80">
+                        {item.rewardAmount}{" "}
+                        {item.rewardMode === "escrow-auto" ? "escrow units" : "XP"} for{" "}
+                        {item.walletAddress}
+                      </div>
+                    </div>
+                  ))}
                   {pendingEscalations.slice(0, 4).map((item) => (
                     <div
                       key={item.escalationId}
@@ -452,6 +579,94 @@ export default function AdminDashboard() {
                 </div>
               ))}
             </div>
+          </div>
+        )}
+
+        {activeTab === "Rewards" && (
+          <div className="space-y-4">
+            {rewardApprovals.length === 0 ? (
+              <div className="border border-white/10 bg-midnight-light p-6 text-white/60 text-sm">
+                No reward approvals yet.
+              </div>
+            ) : (
+              rewardApprovals.map((item) => (
+                <div
+                  key={item.commitmentId}
+                  className="border border-white/10 bg-midnight-light p-6"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
+                    <div>
+                      <div className="text-xs uppercase tracking-widest text-white/40">
+                        {item.commitmentId}
+                      </div>
+                      <div className="font-mono text-xs text-white/60 mt-1">
+                        Wallet: {item.walletAddress}
+                      </div>
+                    </div>
+                    <div className="flex gap-2 text-[10px] uppercase tracking-widest">
+                      <span className="px-3 py-1 border border-white/20">
+                        {item.verificationStatus}
+                      </span>
+                      <span className="px-3 py-1 border border-bright-blue/30 text-bright-blue">
+                        {item.rewardMode}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="grid md:grid-cols-2 gap-4 text-sm mb-4">
+                    <div>
+                      <div className="text-white/40 uppercase tracking-widest text-[10px] mb-1">
+                        Review
+                      </div>
+                      <div className="text-white/80">
+                        Score {item.reviewScore} · {item.reviewPassed ? "passed" : "failed"}
+                      </div>
+                      <div className="font-mono text-xs text-white/50 break-all mt-1">
+                        {item.artifactUrl}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-white/40 uppercase tracking-widest text-[10px] mb-1">
+                        Reward
+                      </div>
+                      <div className="text-white/80">
+                        {item.rewardAmount}{" "}
+                        {item.rewardMode === "escrow-auto" ? "escrow units" : "XP"}
+                      </div>
+                      <div className="text-xs text-white/50 mt-1">
+                        {item.rewardStatus}
+                      </div>
+                    </div>
+                  </div>
+
+                  {item.verificationStatus === "pending-admin" ? (
+                    <div className="flex gap-3">
+                      <button
+                        onClick={() => void handleRewardDecision(item, "approved")}
+                        className="px-4 py-2 bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 text-xs font-bold uppercase tracking-widest flex items-center gap-2"
+                      >
+                        <Coins size={14} />
+                        Approve Reward
+                      </button>
+                      <button
+                        onClick={() => void handleRewardDecision(item, "rejected")}
+                        className="px-4 py-2 bg-red-500/20 border border-red-400/40 text-red-300 text-xs font-bold uppercase tracking-widest"
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="text-xs text-white/60">
+                      {item.claimedAt
+                        ? `Claimed at ${formatDate(item.claimedAt)}`
+                        : item.approvedAt
+                          ? `Approved at ${formatDate(item.approvedAt)}`
+                          : "Decision recorded"}
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
           </div>
         )}
 

@@ -67,9 +67,9 @@ function ProofModeBadge({
         </div>
         <div className="text-white/70 text-xs leading-5">
           {isMidnight
-            ? "Completion certificate issued on-chain via Midnight's zero-knowledge proof system. The verify_completion() circuit ran locally and the proof was submitted to the Midnight preprod indexer."
+            ? "Completion proof has been committed for Midnight verification. The quest is now waiting for admin approval before any escrow reward can be claimed."
             : reason ||
-              "Midnight contracts are not yet deployed. Running in local commitment mode — the proof would be submitted to Midnight when contracts are deployed."}
+              "Midnight contracts are not yet deployed. Running in local commitment mode while preserving the pending-admin reward lifecycle."}
         </div>
       </div>
     </div>
@@ -457,8 +457,8 @@ export default function QuestClaim() {
           onChainMode = "wallet-popup";
           chainNote =
             `Completion intent signed via Midnight DApp connector (Lace). ` +
-            `verify_completion() circuit authorized for Completion Registry ` +
-            `(${COMPLETION_REGISTRY_ADDRESS}). Cert: ${onChainResult.certId.slice(0, 12)}…`;
+            `verify_completion() authorization captured for Completion Registry ` +
+            `(${COMPLETION_REGISTRY_ADDRESS}). Awaiting admin approval before claim.`;
 
           console.info(
             "[commitment] verify_completion intent authorized on-chain",
@@ -511,8 +511,8 @@ export default function QuestClaim() {
       setCommitmentResult(commitment);
       notifyComplete(
         onChainCertId
-          ? `ZK commitment authorized on Midnight! Cert: ${onChainCertId.slice(0, 12)}…`
-          : "Commitment saved. Connect Midnight Lace wallet to register on-chain.",
+          ? `Completion submitted. Admin approval is now required before reward claim.`
+          : "Commitment saved. Connect Midnight Lace wallet to register the completion intent.",
       );
       setTimeout(() => {
         navigate(`/proof/${commitment.commitmentId}`);

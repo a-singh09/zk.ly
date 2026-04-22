@@ -2,6 +2,7 @@ import { useParams, Link } from "react-router-dom";
 import {
   ArrowLeft,
   CheckSquare,
+  Coins,
   ShieldCheck,
   Share,
   ExternalLink,
@@ -13,11 +14,21 @@ import {
   Lock,
 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { getCommitment, type CommitmentResponse } from "../lib/api";
+import {
+  claimReward,
+  getCommitment,
+  type CommitmentResponse,
+} from "../lib/api";
+import { useMidnightWallet } from "../lib/MidnightWalletContext";
+import { executeRewardClaimOnChain } from "../lib/midnightConnectorExecutor";
 
 export default function CertExplorer() {
   const { certId } = useParams();
   const [record, setRecord] = useState<CommitmentResponse | null>(null);
+  const [claiming, setClaiming] = useState(false);
+  const [claimError, setClaimError] = useState<string | null>(null);
+  const { walletAddress, signWalletAuthorization, connectedWalletApi } =
+    useMidnightWallet();
 
   useEffect(() => {
     let cancelled = false;
@@ -45,6 +56,60 @@ export default function CertExplorer() {
   const resolvedAgent = record?.review
     ? `zkquest-review-${record.review.reviewMode}`
     : "agent-unavailable";
+  const canClaim =
+    record?.rewardMode === "escrow-auto" && record.rewardStatus === "claimable";
+
+  const handleClaim = async () => {
+    if (!record) return;
+
+    setClaimError(null);
+    setClaiming(true);
+
+    try {
+      const currentWallet = walletAddress ?? record.walletAddress;
+      const claimPayload = JSON.stringify({
+        action: "claim-reward",
+        commitmentId: record.commitmentId,
+        walletAddress: currentWallet,
+        issuedAt: new Date().toISOString(),
+      });
+
+      let walletApprovalSignature: string | undefined;
+      let walletApprovalData: string | undefined;
+      let walletApprovalVerifyingKey: string | undefined;
+
+      try {
+        const signed = await signWalletAuthorization(claimPayload);
+        walletApprovalSignature = signed.signature;
+        walletApprovalData = signed.data;
+        walletApprovalVerifyingKey = signed.verifyingKey;
+      } catch {
+        // Keep wallet authorization optional while connector builds vary by capability.
+      }
+
+      const onChainResult = await executeRewardClaimOnChain({
+        connectedApi: connectedWalletApi,
+        walletAddress: currentWallet,
+        commitment: record,
+      });
+
+      const updated = await claimReward(record.commitmentId, {
+        walletAddress: currentWallet,
+        walletApprovalSignature,
+        walletApprovalData,
+        walletApprovalVerifyingKey,
+        escrowClaimTxId: onChainResult.escrowClaimTxId,
+        completionClaimTxId: onChainResult.completionClaimTxId,
+      });
+      setRecord(updated);
+    } catch (error) {
+      setClaimError(
+        error instanceof Error ? error.message : "Could not claim reward",
+      );
+    } finally {
+      setClaiming(false);
+    }
+  };
 
   return (
     <div className="w-full">
@@ -115,6 +180,11 @@ export default function CertExplorer() {
                     IN PRIVATE STATE
                   </span>
                 </p>
+                {record && (
+                  <p className="text-xs text-white/50 mt-2 uppercase tracking-widest">
+                    Verification: {record.verificationStatus} · Reward: {record.rewardStatus}
+                  </p>
+                )}
               </div>
             </div>
 
@@ -204,7 +274,7 @@ export default function CertExplorer() {
                 <ul className="space-y-1 text-xs text-white/60">
                   <li>• quest_id: <span className="font-mono text-white/80">{record?.review?.questId ?? "—"}</span></li>
                   <li>• xp_awarded: <span className="font-mono text-white/80">{resolvedXp}</span></li>
-                  <li>• status: <span className="font-mono text-emerald-300">VERIFIED</span></li>
+                  <li>• status: <span className="font-mono text-emerald-300">{record?.verificationStatus ?? "PENDING_ADMIN"}</span></li>
                   <li>• completer_key (pseudonymous hash)</li>
                 </ul>
               </div>
@@ -255,6 +325,16 @@ export default function CertExplorer() {
                   </span>
                 </p>
               </div>
+              {canClaim && (
+                <button
+                  onClick={() => void handleClaim()}
+                  disabled={claiming}
+                  className="px-8 py-4 bg-bright-blue text-white font-bold tracking-widest hover:bg-[#0000FE]/90 transition-colors text-sm uppercase whitespace-nowrap border border-bright-blue flex items-center gap-3 disabled:opacity-60"
+                >
+                  <Coins size={18} />
+                  {claiming ? "Claiming..." : "Claim Escrow Reward"}
+                </button>
+              )}
               <Link
                 to="#"
                 className="px-8 py-4 bg-bright-blue text-white font-bold tracking-widest hover:bg-[#0000FE]/90 transition-colors text-sm uppercase whitespace-nowrap border border-bright-blue"
@@ -262,6 +342,9 @@ export default function CertExplorer() {
                 Verify AI Audit Logs
               </Link>
             </div>
+            {claimError && (
+              <div className="mt-4 text-sm text-red-300">{claimError}</div>
+            )}
           </div>
         </div>
       </div>

@@ -8,11 +8,13 @@
  *   - quest-registry:    5992b8434f52121c1e859f2545ddba089c0da253d1de9fe1d48a4c6261e05474
  *   - completion-registry: dc42e5b98c61e815e59d18413c8ec25e67f103a652493684da3fe0a89d2d3bba
  *
- * Flow for create_quest / verify_completion:
- *   1. Build an intent payload representing the circuit call arguments.
- *   2. Call connectedApi.signData() to get wallet authorization (DApp connector popup).
- *   3. Derive a deterministic on-chain ID from the intent using SHA-256.
- *   4. Return the ID + txId so the backend can persist metadata.
+ * Current frontend flow for create_quest / verify_completion:
+ *   1. Build an authorization payload representing the intended circuit call.
+ *   2. Ask the wallet to sign that payload through the DApp connector popup.
+ *   3. Return derived identifiers so the backend can track pending intent state.
+ *
+ * This file does NOT yet build, prove, balance, and submit real Compact call
+ * transactions in-browser. It only captures connector authorization metadata.
  *
  * NOTE: hintUsage() is called only if the wallet exposes it (optional in some
  * Lace builds). If it throws or is missing, we continue to signData() anyway.
@@ -143,6 +145,19 @@ async function tryHintUsage(
   }
 }
 
+function normalizeConnectorError(error: unknown): Error {
+  if (error instanceof Error) {
+    if (/Method not implemented/i.test(error.message)) {
+      return new Error(
+        "Your current Midnight wallet build does not implement this connector signing method yet. The app can still save local state, but real connector-backed contract execution needs a wallet/API build with signData support.",
+      );
+    }
+    return error;
+  }
+
+  return new Error(String(error));
+}
+
 // ---------------------------------------------------------------------------
 // create_quest  — Quest Registry contract
 // ---------------------------------------------------------------------------
@@ -203,10 +218,15 @@ export async function createQuestOnChain(
 
   await tryHintUsage(connectedApi, ["signData"]);
 
-  const signature = await connectedApi.signData(intentPayload, {
-    encoding: "text",
-    keyType: "unshielded",
-  });
+  let signature;
+  try {
+    signature = await connectedApi.signData(intentPayload, {
+      encoding: "text",
+      keyType: "unshielded",
+    });
+  } catch (error) {
+    throw normalizeConnectorError(error);
+  }
 
   const txId = await sha256(signature.signature);
 
@@ -320,10 +340,15 @@ export async function commitCompletionOnChain(
 
   await tryHintUsage(connectedApi, ["signData"]);
 
-  const signature = await connectedApi.signData(intentPayload, {
-    encoding: "text",
-    keyType: "unshielded",
-  });
+  let signature;
+  try {
+    signature = await connectedApi.signData(intentPayload, {
+      encoding: "text",
+      keyType: "unshielded",
+    });
+  } catch (error) {
+    throw normalizeConnectorError(error);
+  }
 
   const txId = await sha256(signature.signature);
 
