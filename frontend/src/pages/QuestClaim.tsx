@@ -19,9 +19,9 @@ import {
 import { useNotification } from "../lib/NotificationContext";
 import { useMidnightWallet } from "../lib/MidnightWalletContext";
 import {
-  commitCompletionOnChain,
   COMPLETION_REGISTRY_ADDRESS,
 } from "../lib/questContractApi";
+import { commitCompletionOnChain } from "../lib/midnightConnectorExecutor";
 import {
   authorizeReviewCommitment,
   createEscalation,
@@ -408,13 +408,10 @@ export default function QuestClaim() {
       const currentAddress =
         isConnected && walletAddress ? walletAddress : await connectWallet();
 
-      // ── Step 1: DApp connector — sign verify_completion intent ──
+      // ── Step 1: DApp connector — execute verify_completion on-chain ──
       let onChainCertId: string | undefined;
       let onChainCommitmentHash: string | undefined;
       let onChainReviewCommitmentHash: string | undefined;
-      let walletSig: string | undefined;
-      let walletData: string | undefined;
-      let walletVerifyingKey: string | undefined;
       let onChainTxId: string | undefined;
       let onChainMode: "midnight" | "mock" | "wallet-popup" = "mock";
       let chainNote =
@@ -450,14 +447,11 @@ export default function QuestClaim() {
           onChainCertId = onChainResult.certId;
           onChainCommitmentHash = onChainResult.commitmentHash;
           onChainReviewCommitmentHash = onChainResult.reviewCommitmentHash;
-          walletSig = onChainResult.walletSignature;
-          walletData = onChainResult.walletData;
-          walletVerifyingKey = onChainResult.walletVerifyingKey;
           onChainTxId = onChainResult.txId;
-          onChainMode = "wallet-popup";
+          onChainMode = "midnight";
           chainNote =
-            `Completion intent signed via Midnight DApp connector (Lace). ` +
-            `verify_completion() authorization captured for Completion Registry ` +
+            `verify_completion() submitted on-chain via Midnight DApp connector (Lace). ` +
+            `ZK proof generated and transaction balanced + submitted to Completion Registry ` +
             `(${COMPLETION_REGISTRY_ADDRESS}). Awaiting admin approval before claim.`;
 
           console.info(
@@ -480,25 +474,13 @@ export default function QuestClaim() {
       }
 
       // ── Step 2: Build backend authorization payload ──
-      const approvalPayload = JSON.stringify({
-        action: "authorize-review-commitment",
-        reviewId: reviewResult.reviewId,
-        questId: questId ?? "blog-quest-demo",
-        spaceId: id ?? "midnight",
-        walletAddress: currentAddress,
-        onChainCertId,
-        onChainMode,
-        issuedAt: new Date().toISOString(),
-      });
+      // (approvalPayload logic removed)
 
       // ── Step 3: Persist to backend ──
       const commitment = await authorizeReviewCommitment({
         reviewId: reviewResult.reviewId,
         walletAddress: currentAddress,
         authorizationMode: connectedWalletApi ? "dapp-connector" : "mock",
-        walletApprovalSignature: walletSig ?? approvalPayload,
-        walletApprovalData: walletData ?? approvalPayload,
-        walletApprovalVerifyingKey: walletVerifyingKey ?? "",
         // Pass on-chain data for the backend to store
         onChainCertId,
         onChainCommitmentHash,

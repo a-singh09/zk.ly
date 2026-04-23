@@ -50,7 +50,7 @@ const NETWORK_CONFIG = {
     process.env.MIDNIGHT_INDEXER_WS_URL ??
     "wss://indexer.preprod.midnight.network/api/v4/graphql/ws",
   node: process.env.MIDNIGHT_RPC_URL ?? "https://rpc.preprod.midnight.network",
-  proofServer: process.env.MIDNIGHT_PROOF_SERVER_URL ?? "http://127.0.0.1:6300",
+  proofServer: "http://127.0.0.1:6300",
 };
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));

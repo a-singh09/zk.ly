@@ -15,6 +15,7 @@
     "@midnight-ntwrk/dapp-connector-api": "^4.0.1",
     "@midnight-ntwrk/ledger-v8": "8.0.3",
     "@midnight-ntwrk/midnight-js-contracts": "4.0.1",
+    "@midnight-ntwrk/midnight-js-http-client-proof-provider": "^4.0.4",
     "@midnight-ntwrk/midnight-js-indexer-public-data-provider": "4.0.1",
     "@midnight-ntwrk/midnight-js-types": "4.0.1",
     "@midnight-ntwrk/wallet-sdk-address-format": "3.1.0",
@@ -51,5 +52,11 @@
     "vite": "^8.0.4",
     "vite-plugin-top-level-await": "^1.6.0",
     "vite-plugin-wasm": "^3.6.0"
+  },
+  "overrides": {
+    "@midnight-ntwrk/midnight-js-types": "4.0.1",
+    "@midnight-ntwrk/midnight-js-utils": "4.0.1",
+    "@midnight-ntwrk/midnight-js-network-id": "4.0.1",
+    "@midnight-ntwrk/midnight-js-contracts": "4.0.1"
   }
 }
