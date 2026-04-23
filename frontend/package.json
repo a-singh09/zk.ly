@@ -11,7 +11,13 @@
   },
   "dependencies": {
     "@gsap/react": "^2.1.2",
+    "@midnight-ntwrk/compact-js": "2.5.0",
     "@midnight-ntwrk/dapp-connector-api": "^4.0.1",
+    "@midnight-ntwrk/ledger-v8": "8.0.3",
+    "@midnight-ntwrk/midnight-js-contracts": "4.0.1",
+    "@midnight-ntwrk/midnight-js-indexer-public-data-provider": "4.0.1",
+    "@midnight-ntwrk/midnight-js-types": "4.0.1",
+    "@midnight-ntwrk/wallet-sdk-address-format": "3.1.0",
     "@tailwindcss/vite": "^4.2.2",
     "clsx": "^2.1.1",
     "gsap": "^3.15.0",

@@ -15,10 +15,10 @@ import {
 } from "../lib/api";
 import { useMidnightWallet } from "../lib/MidnightWalletContext";
 import {
-  createQuestOnChain,
   QUEST_REGISTRY_ADDRESS,
   type QuestRewardMode,
 } from "../lib/questContractApi";
+import { createQuestOnChain } from "../lib/midnightConnectorExecutor";
 
 const CodeEditor =
   (Editor as typeof Editor & { default?: typeof Editor }).default ?? Editor;
@@ -211,16 +211,21 @@ export default function QuestManagement() {
 
             onChainQuestId = result.onChainQuestId;
             onChainTxId = result.txId;
-            onChainMode = "wallet-popup";
+            onChainMode = "midnight";
             onChainReason =
               `Quest registered on Midnight quest-registry contract (${QUEST_REGISTRY_ADDRESS}). ` +
-              `DApp connector wallet signed the create_quest intent. Tx: ${result.txId.slice(0, 16)}…`;
+              `ZK proof generated and transaction submitted on-chain. Tx: ${result.txId.slice(0, 16)}…`;
 
             console.info(
               "[quest:create-chain] Quest registered on-chain",
               result,
             );
           } catch (chainErr) {
+            console.error(
+              "[quest:create-chain] Full error object:",
+              chainErr,
+              (chainErr as Error)?.stack,
+            );
             const chainMsg =
               chainErr instanceof Error
                 ? chainErr.message

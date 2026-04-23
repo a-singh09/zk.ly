@@ -1,7 +1,7 @@
 import type { ConnectedAPI } from "@midnight-ntwrk/dapp-connector-api";
-import { CompiledContract } from "../../../contracts/node_modules/@midnight-ntwrk/compact-js";
-import { findDeployedContract } from "../../../contracts/node_modules/@midnight-ntwrk/midnight-js-contracts";
-import { indexerPublicDataProvider } from "../../../contracts/node_modules/@midnight-ntwrk/midnight-js-indexer-public-data-provider";
+import { CompiledContract } from "@midnight-ntwrk/compact-js";
+import { findDeployedContract } from "@midnight-ntwrk/midnight-js-contracts";
+import { indexerPublicDataProvider } from "@midnight-ntwrk/midnight-js-indexer-public-data-provider";
 import {
   ZKConfigProvider,
   createProofProvider,
@@ -11,7 +11,7 @@ import {
   type ProverKey,
   type VerifierKey,
   type ZKIR,
-} from "../../../contracts/node_modules/@midnight-ntwrk/midnight-js-types";
+} from "@midnight-ntwrk/midnight-js-types";
 import {
   Binding,
   Proof,
@@ -19,9 +19,10 @@ import {
   Transaction,
   type FinalizedTransaction,
   type TransactionId,
-} from "../../../contracts/node_modules/@midnight-ntwrk/ledger-v8";
+} from "@midnight-ntwrk/ledger-v8";
 import * as CompletionRegistry from "../../../contracts/contracts/managed/completion-registry/contract/index.js";
 import * as RewardEscrow from "../../../contracts/contracts/managed/reward-escrow/contract/index.js";
+import * as QuestRegistry from "../../../contracts/contracts/managed/quest-registry/contract/index.js";
 import approveCompletionProverUrl from "../../../contracts/contracts/managed/completion-registry/keys/approve_completion.prover?url";
 import approveCompletionVerifierUrl from "../../../contracts/contracts/managed/completion-registry/keys/approve_completion.verifier?url";
 import approveCompletionZkirUrl from "../../../contracts/contracts/managed/completion-registry/zkir/approve_completion.bzkir?url";
@@ -40,8 +41,21 @@ import rejectRewardZkirUrl from "../../../contracts/contracts/managed/reward-esc
 import claimRewardProverUrl from "../../../contracts/contracts/managed/reward-escrow/keys/claim_reward.prover?url";
 import claimRewardVerifierUrl from "../../../contracts/contracts/managed/reward-escrow/keys/claim_reward.verifier?url";
 import claimRewardZkirUrl from "../../../contracts/contracts/managed/reward-escrow/zkir/claim_reward.bzkir?url";
+import createQuestProverUrl from "../../../contracts/contracts/managed/quest-registry/keys/create_quest.prover?url";
+import createQuestVerifierUrl from "../../../contracts/contracts/managed/quest-registry/keys/create_quest.verifier?url";
+import createQuestZkirUrl from "../../../contracts/contracts/managed/quest-registry/zkir/create_quest.bzkir?url";
+import verifyCompletionProverUrl from "../../../contracts/contracts/managed/completion-registry/keys/verify_completion.prover?url";
+import verifyCompletionVerifierUrl from "../../../contracts/contracts/managed/completion-registry/keys/verify_completion.verifier?url";
+import verifyCompletionZkirUrl from "../../../contracts/contracts/managed/completion-registry/zkir/verify_completion.bzkir?url";
 import type { CommitmentResponse } from "./api";
-import { COMPLETION_REGISTRY_ADDRESS } from "./questContractApi";
+import {
+  COMPLETION_REGISTRY_ADDRESS,
+  QUEST_REGISTRY_ADDRESS,
+  type CreateQuestOnChainParams,
+  type CreateQuestOnChainResult,
+  type CommitCompletionOnChainParams,
+  type CommitCompletionOnChainResult,
+} from "./questContractApi";
 
 const COMPLETION_ASSET_PATH = "completion-registry/browser";
 const REWARD_ESCROW_ASSET_PATH = "reward-escrow/browser";
@@ -53,12 +67,15 @@ const textEncoder = new TextEncoder();
 type CompletionCircuitId =
   | "approve_completion"
   | "reject_completion"
-  | "mark_reward_claimed";
+  | "mark_reward_claimed"
+  | "verify_completion";
 
 type RewardEscrowCircuitId =
   | "approve_reward"
   | "reject_reward"
   | "claim_reward";
+
+type QuestCircuitId = "create_quest";
 
 type CircuitAssetMap<K extends string> = Record<
   K,
@@ -100,6 +117,11 @@ interface CompletionPrivateState {
   commitmentPayload: Uint8Array;
   passedFlag: boolean;
   scoreBand: bigint;
+}
+
+interface QuestPrivateState {
+  callerSecretKey: Uint8Array;
+  criteriaBytes: Uint8Array;
 }
 
 interface RewardEscrowPrivateState {
@@ -223,6 +245,11 @@ const completionAssets: CircuitAssetMap<CompletionCircuitId> = {
     verifier: markRewardClaimedVerifierUrl,
     zkir: markRewardClaimedZkirUrl,
   },
+  verify_completion: {
+    prover: verifyCompletionProverUrl,
+    verifier: verifyCompletionVerifierUrl,
+    zkir: verifyCompletionZkirUrl,
+  },
 };
 
 const rewardEscrowAssets: CircuitAssetMap<RewardEscrowCircuitId> = {
@@ -240,6 +267,14 @@ const rewardEscrowAssets: CircuitAssetMap<RewardEscrowCircuitId> = {
     prover: claimRewardProverUrl,
     verifier: claimRewardVerifierUrl,
     zkir: claimRewardZkirUrl,
+  },
+};
+
+const questRegistryAssets: CircuitAssetMap<QuestCircuitId> = {
+  create_quest: {
+    prover: createQuestProverUrl,
+    verifier: createQuestVerifierUrl,
+    zkir: createQuestZkirUrl,
   },
 };
 
@@ -328,6 +363,9 @@ const rewardEscrowCompiledContract = CompiledContract.make(
   } as never),
   CompiledContract.withCompiledFileAssets(REWARD_ESCROW_ASSET_PATH),
 );
+
+// questRegistryCompiledContract is created lazily inside createQuestOnChain
+// to avoid module-evaluation failures when QuestRegistry.Contract isn't ready.
 
 function normalizeConnectorError(error: unknown): Error {
   if (error instanceof Error) {
@@ -725,4 +763,245 @@ export async function executeRewardClaimOnChain(params: {
     escrowClaimTxId: escrowClaimTx.public.txId,
     completionClaimTxId: completionClaimTx.public.txId,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Quest Registry — create_quest
+// ---------------------------------------------------------------------------
+
+export async function createQuestOnChain(
+  params: CreateQuestOnChainParams,
+): Promise<CreateQuestOnChainResult> {
+  const {
+    connectedApi: rawApi,
+    spaceId,
+    sprintId,
+    questType,
+    trackTag,
+    criteriaJson,
+    freqSlots = 0,
+    maxCompletions = 0,
+    expiresAtSlot = 0,
+    xpValue = 100,
+    rewardMode = "XP_ONLY",
+    escrowContract = "",
+    escrowAmount = 0,
+  } = params;
+
+  if (!rawApi) {
+    throw new Error("Connect a Midnight wallet before creating a quest on-chain.");
+  }
+
+  const criteriaStr = JSON.stringify(criteriaJson);
+  const criteriaBytes = new Uint8Array(256);
+  criteriaBytes.set(textEncoder.encode(criteriaStr.slice(0, 256)));
+
+  const callerSecretKey = toBytes32FromText(spaceId); // deterministic per creator
+
+  const currentSlot = nowSlot();
+  const tsBuf = new Uint8Array(8);
+  new DataView(tsBuf.buffer).setBigUint64(0, currentSlot, true);
+
+  const rewardModeEnum =
+    rewardMode === "ESCROW_AUTOMATIC"
+      ? QuestRegistry.RewardMode.ESCROW_AUTOMATIC
+      : QuestRegistry.RewardMode.XP_ONLY;
+
+  // Build questRegistry compiled contract lazily to avoid module-init Symbol issues
+  if (!QuestRegistry.Contract) {
+    throw new Error("quest-registry contract module failed to load. Ensure the compiled contract is accessible.");
+  }
+  const questRegistryCompiledContract = CompiledContract.make(
+    "quest-registry",
+    QuestRegistry.Contract,
+  ).pipe(
+    CompiledContract.withWitnesses({
+      caller_secret_key: (ctx: { privateState: QuestPrivateState }) => [
+        ctx.privateState,
+        ctx.privateState.callerSecretKey,
+      ],
+      get_criteria_bytes: (ctx: { privateState: QuestPrivateState }) => [
+        ctx.privateState,
+        ctx.privateState.criteriaBytes,
+      ],
+    } as never),
+    CompiledContract.withCompiledFileAssets("quest-registry/browser"),
+  );
+
+  const providers = await createBrowserProviders(
+    rawApi,
+    new BrowserZkConfigProvider(questRegistryAssets),
+  );
+
+  // timestamp must be Bytes<32> per the contract spec
+  const timestamp32 = new Uint8Array(32);
+  timestamp32.set(tsBuf); // 8 bytes of slot data in first 8 bytes
+
+  const questContract = await findDeployedContract(providers as never, {
+    contractAddress: QUEST_REGISTRY_ADDRESS,
+    compiledContract: questRegistryCompiledContract,
+    privateStateId: `quest-create:${spaceId}:${Date.now()}`,
+    initialPrivateState: {
+      callerSecretKey,
+      criteriaBytes,
+    } satisfies QuestPrivateState,
+  } as never);
+
+  const tx = await questContract.callTx.create_quest(
+    toBytes32FromText(spaceId),
+    toBytes32FromText(sprintId),
+    (() => { const b = new Uint8Array(8); b.set(textEncoder.encode(questType.slice(0, 8))); return b; })(),
+    (() => { const b = new Uint8Array(8); b.set(textEncoder.encode(trackTag.slice(0, 8))); return b; })(),
+    BigInt(freqSlots),
+    BigInt(maxCompletions),
+    BigInt(expiresAtSlot),
+    BigInt(Math.min(xpValue, 65535)),
+    rewardModeEnum,
+    toBytes32FromText(escrowContract),
+    BigInt(escrowAmount),
+    timestamp32,
+  );
+
+  const txId = tx.public.txId as string;
+
+  // Derive a quest ID as SHA-256 of spaceId+sprintId+timestamp (mirrors contract hashing)
+  const questIdBuffer = await crypto.subtle.digest(
+    "SHA-256",
+    textEncoder.encode(`${spaceId}:${sprintId}:${currentSlot.toString()}`),
+  );
+  const onChainQuestId = bytesToHex(new Uint8Array(questIdBuffer));
+
+  console.info("[quest:create-chain] create_quest submitted on-chain", {
+    onChainQuestId: onChainQuestId.slice(0, 16) + "…",
+    txId: (txId ?? "").slice(0, 16) + "…",
+    contractAddress: QUEST_REGISTRY_ADDRESS,
+  });
+
+  return { onChainQuestId, txId };
+}
+
+// ---------------------------------------------------------------------------
+// Completion Registry — verify_completion
+// ---------------------------------------------------------------------------
+
+export async function commitCompletionOnChain(
+  params: CommitCompletionOnChainParams,
+): Promise<CommitCompletionOnChainResult> {
+  const {
+    connectedApi: rawApi,
+    questId,
+    sprintId,
+    spaceId,
+    reviewId,
+    score,
+    passed,
+    scoreBand,
+    evidenceClass,
+    xpValue,
+    evidenceHash,
+    walletAddress,
+  } = params;
+
+  if (!rawApi) {
+    throw new Error("Connect a Midnight wallet before submitting a completion on-chain.");
+  }
+
+  const currentSlot = nowSlot();
+  const tsBuf = new Uint8Array(8);
+  new DataView(tsBuf.buffer).setBigUint64(0, currentSlot, true);
+
+  const reviewPayloadStr = JSON.stringify({
+    reviewId, questId, score, passed, scoreBand, evidenceHash, evidenceClass,
+    issuedAt: new Date().toISOString(),
+  });
+  const commitmentPayloadStr = JSON.stringify({
+    questId, sprintId, spaceId, walletAddress, xpValue,
+    timestamp: bytesToHex(tsBuf),
+  });
+
+  const reviewPayload = new Uint8Array(256);
+  reviewPayload.set(textEncoder.encode(reviewPayloadStr.slice(0, 256)));
+  const commitmentPayload = new Uint8Array(256);
+  commitmentPayload.set(textEncoder.encode(commitmentPayloadStr.slice(0, 256)));
+
+  const reviewCommitmentHash = bytesToHex(
+    new Uint8Array(await crypto.subtle.digest("SHA-256", reviewPayload)),
+  );
+
+  // admin key + on-chain commitment: deterministic from reviewId
+  const adminKey = toBytes32FromText(`zkquest:admin:${spaceId}`);
+  const combinedBuf = new Uint8Array(reviewPayload.length + commitmentPayload.length);
+  combinedBuf.set(reviewPayload);
+  combinedBuf.set(commitmentPayload, reviewPayload.length);
+  const onChainCommitment = new Uint8Array(
+    await crypto.subtle.digest("SHA-256", combinedBuf),
+  );
+
+  const userSecretKey = toBytes32FromText(`zkquest:completer:${walletAddress}`);
+
+  const privateState: CompletionPrivateState = {
+    userSecretKey,
+    adminSecretKey: adminKey,
+    evidenceHash: toBytes32FromHex(evidenceHash),
+    evidenceClassRaw: (() => { const b = new Uint8Array(8); b.set(textEncoder.encode(evidenceClass.slice(0, 8))); return b; })(),
+    verificationScore: BigInt(Math.round(score)),
+    criteriaBytes: ZERO_256.slice(),
+    requiredEvidenceClass: ZERO_8.slice(),
+    minScoreThreshold: 0n,
+    freqSlotsRequired: 0n,
+    lastCompletionSlot: 0n,
+    currentSlot,
+    reviewPayload,
+    commitmentPayload,
+    passedFlag: passed,
+    scoreBand: BigInt(scoreBand),
+  };
+
+  const providers = await createBrowserProviders(
+    rawApi,
+    new BrowserZkConfigProvider(completionAssets),
+  );
+
+  const completionContract = await findDeployedContract(providers as never, {
+    contractAddress: COMPLETION_REGISTRY_ADDRESS,
+    compiledContract: completionCompiledContract,
+    privateStateId: `completion-verify:${reviewId}:${Date.now()}`,
+    initialPrivateState: privateState,
+  } as never);
+
+  const tx = await completionContract.callTx.verify_completion(
+    toBytes32FromHex(questId),
+    toBytes32FromText(sprintId),
+    toBytes32FromText(spaceId),
+    adminKey,
+    onChainCommitment,
+    BigInt(Math.min(xpValue, 65535)),
+  );
+
+  const txId = tx.public.txId as string;
+
+  // Cert ID: SHA-256 of reviewId + onChainCommitment
+  const certIdBuf = new Uint8Array(
+    await crypto.subtle.digest(
+      "SHA-256",
+      textEncoder.encode(`${reviewId}:${bytesToHex(onChainCommitment)}`),
+    ),
+  );
+  const certId = bytesToHex(certIdBuf);
+
+  const commitmentHashBuf = new Uint8Array(
+    await crypto.subtle.digest(
+      "SHA-256",
+      textEncoder.encode(`${certId}:${reviewCommitmentHash}:${currentSlot}`),
+    ),
+  );
+  const commitmentHash = bytesToHex(commitmentHashBuf);
+
+  console.info("[completion:verify] verify_completion submitted on-chain", {
+    certId: certId.slice(0, 16) + "…",
+    txId: (txId ?? "").slice(0, 16) + "…",
+    contractAddress: COMPLETION_REGISTRY_ADDRESS,
+  });
+
+  return { certId, commitmentHash, reviewCommitmentHash, txId };
 }
