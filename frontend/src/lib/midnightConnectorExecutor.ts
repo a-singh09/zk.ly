@@ -3,6 +3,7 @@ import { Buffer } from "buffer";
 import { CompiledContract } from "@midnight-ntwrk/compact-js";
 import { findDeployedContract } from "@midnight-ntwrk/midnight-js-contracts";
 import { submitCallTxAsync } from "@midnight-ntwrk/midnight-js-contracts";
+import { withContractScopedTransaction } from "@midnight-ntwrk/midnight-js-contracts";
 import { httpClientProofProvider } from "@midnight-ntwrk/midnight-js-http-client-proof-provider";
 import { indexerPublicDataProvider } from "@midnight-ntwrk/midnight-js-indexer-public-data-provider";
 import { setNetworkId } from "@midnight-ntwrk/midnight-js-network-id";
@@ -1043,6 +1044,7 @@ export async function createQuestOnChain(
     connectedApi: rawApi,
     spaceId,
     sprintId,
+    creatorWalletAddress,
     questType,
     trackTag,
     criteriaJson,
@@ -1070,7 +1072,9 @@ export async function createQuestOnChain(
   const criteriaBytes = new Uint8Array(256);
   criteriaBytes.set(textEncoder.encode(criteriaStr.slice(0, 256)));
 
-  const callerSecretKeyBytes = toBytes32FromText(spaceId); // deterministic per creator
+  // IMPORTANT: quest admin identity must match approval path.
+  // Approvals derive `zkquest:creator:` key from admin wallet address, so use the same seed here.
+  const callerSecretKeyBytes = toBytes32FromText(creatorWalletAddress);
   const emptyPrivateState = new ChargedState(StateValue.newNull());
 
   const currentSlot = nowSlot();
@@ -1206,6 +1210,7 @@ export async function commitCompletionOnChain(
     onChainCriteriaCommitment?: string;
     criteriaJson?: Record<string, unknown>;
     questType?: string;
+    creatorWallet?: string;
   } | null> => {
     // If caller passed an on-chain quest id, try to find the backing quest record
     // so we can retrieve criteriaJson + type for criteria_bytes witnesses.
@@ -1219,6 +1224,7 @@ export async function commitCompletionOnChain(
               onChainCriteriaCommitment?: string;
               criteriaJson?: Record<string, unknown>;
               type?: string;
+              creatorWallet?: string;
             }>;
           };
           const match = (payload.items ?? []).find(
@@ -1230,6 +1236,7 @@ export async function commitCompletionOnChain(
               onChainCriteriaCommitment: match.onChainCriteriaCommitment,
               criteriaJson: match.criteriaJson,
               questType: match.type,
+              creatorWallet: match.creatorWallet,
             };
           }
         }
@@ -1250,6 +1257,7 @@ export async function commitCompletionOnChain(
         onChainCriteriaCommitment?: string;
         criteriaJson?: Record<string, unknown>;
         type?: string;
+        creatorWallet?: string;
       };
       if (!quest.onChainQuestId) {
         return null;
@@ -1259,6 +1267,7 @@ export async function commitCompletionOnChain(
         onChainCriteriaCommitment: quest.onChainCriteriaCommitment,
         criteriaJson: quest.criteriaJson,
         questType: quest.type,
+        creatorWallet: quest.creatorWallet,
       };
     } catch {
       return null;
@@ -1335,7 +1344,10 @@ export async function commitCompletionOnChain(
   );
 
   // The completion circuit uses the quest's criteria commitment as the admin/criteria key.
-  const adminKey = toBytes32FromHex(criteriaCommitmentHex);
+  const adminSecretKeyForQuest = toBytes32FromText(
+    questMeta?.creatorWallet?.trim() || spaceId,
+  );
+  const adminKey = deriveActorKey(CompletionRegistry, "zkquest:creator:", adminSecretKeyForQuest);
   const combinedBuf = new Uint8Array(reviewPayload.length + commitmentPayload.length);
   combinedBuf.set(reviewPayload);
   combinedBuf.set(commitmentPayload, reviewPayload.length);
@@ -1398,35 +1410,31 @@ export async function commitCompletionOnChain(
     initialPrivateState: privateState,
   } as never);
 
-  const tx = await completionContract.callTx.verify_completion(
-    toBytes32FromHex(onChainQuestId),
-    toBytes32FromText(sprintId),
-    toBytes32FromText(spaceId),
-    adminKey,
-    // `verify_completion` asserts `persistentHash(criteria_bytes) == on_chain_commitment`
-    // so we must pass the quest's on-chain criteria commitment here.
-    toBytes32FromHex(criteriaCommitmentHex),
-    BigInt(Math.min(xpValue, 65535)),
+  let certIdBytes: Uint8Array | null = null;
+  const finalized = await withContractScopedTransaction(
+    providers as never,
+    async (txCtx) => {
+      const result = await completionContract.callTx.verify_completion(
+        txCtx as never,
+        toBytes32FromHex(onChainQuestId),
+        toBytes32FromText(sprintId),
+        toBytes32FromText(spaceId),
+        adminKey,
+        // `verify_completion` asserts `persistentHash(criteria_bytes) == on_chain_commitment`
+        // so we must pass the quest's on-chain criteria commitment here.
+        toBytes32FromHex(criteriaCommitmentHex),
+        BigInt(Math.min(xpValue, 65535)),
+      );
+      certIdBytes = result.private.result as Uint8Array;
+    },
+    { scopeName: "verify_completion" },
   );
 
-  const txId = tx.public.txId as string;
+  const txId = finalized.public?.txId as string;
+  const certId = bytesToHex(certIdBytes ?? ZERO_32);
 
-  // Cert ID: SHA-256 of reviewId + onChainCommitment
-  const certIdBuf = new Uint8Array(
-    await crypto.subtle.digest(
-      "SHA-256",
-      textEncoder.encode(`${reviewId}:${bytesToHex(payloadCommitment)}`),
-    ),
-  );
-  const certId = bytesToHex(certIdBuf);
-
-  const commitmentHashBuf = new Uint8Array(
-    await crypto.subtle.digest(
-      "SHA-256",
-      textEncoder.encode(`${certId}:${reviewCommitmentHash}:${currentSlot}`),
-    ),
-  );
-  const commitmentHash = bytesToHex(commitmentHashBuf);
+  // Off-chain tracking hashes (not used by the contract).
+  const commitmentHash = bytesToHex(payloadCommitment);
 
   console.info("[completion:verify] verify_completion submitted on-chain", {
     certId: certId.slice(0, 16) + "…",

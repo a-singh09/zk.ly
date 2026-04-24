@@ -282,7 +282,7 @@ export default function AdminDashboard() {
       );
       setAdminMessage(
         status === "approved"
-          ? "Reward approved. User can now claim from escrow."
+          ? "Reward approved."
           : "Reward rejected.",
       );
     } catch (error) {

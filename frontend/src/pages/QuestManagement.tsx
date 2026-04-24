@@ -196,6 +196,7 @@ export default function QuestManagement() {
               connectedApi: connectedWalletApi,
               spaceId,
               sprintId: spaceId, // use spaceId as sprint scope for now
+              creatorWalletAddress: currentAddress,
               questType: type.slice(0, 8),
               trackTag: track.slice(0, 8),
               criteriaJson: parsedCriteria,

@@ -18,6 +18,7 @@ export interface CreateQuestOnChainParams {
   connectedApi: import("@midnight-ntwrk/dapp-connector-api").ConnectedAPI | null;
   spaceId: string;
   sprintId: string;
+  creatorWalletAddress: string;
   questType: string;
   trackTag: string;
   criteriaJson: Record<string, unknown>;
