@@ -415,7 +415,7 @@ export default function QuestClaim() {
       let onChainTxId: string | undefined;
       let onChainMode: "midnight" | "mock" | "wallet-popup" = "mock";
       let chainNote =
-        "Commitment saved off-chain. Connect Midnight Lace to register on the Completion Registry contract.";
+        "Commitment saved off-chain.";
 
       if (connectedWalletApi) {
         try {

@@ -504,6 +504,50 @@ function bytesToHex(bytes: Uint8Array): string {
     .join("");
 }
 
+function stableJsonStringify(value: unknown): string {
+  const seen = new WeakSet<object>();
+
+  const normalize = (input: unknown): unknown => {
+    if (input === null || typeof input !== "object") {
+      return input;
+    }
+
+    if (seen.has(input as object)) {
+      // Cycles are not expected for criteria payloads; fall back to null.
+      return null;
+    }
+    seen.add(input as object);
+
+    if (Array.isArray(input)) {
+      return input.map((item) => normalize(item));
+    }
+
+    const obj = input as Record<string, unknown>;
+    const out: Record<string, unknown> = {};
+    for (const key of Object.keys(obj).sort()) {
+      out[key] = normalize(obj[key]);
+    }
+    return out;
+  };
+
+  return JSON.stringify(normalize(value));
+}
+
+function evidenceClassTagFromQuestType(type: string | undefined): string {
+  switch (type) {
+    case "blog":
+      return "AI_SCORE";
+    case "github":
+      return "GIT_PR";
+    case "social":
+      return "OAUTH_FL";
+    case "onchain":
+      return "ONCHAIN";
+    default:
+      return "CUSTOM";
+  }
+}
+
 async function snapshotQuestRegistryLedger(publicDataProvider: {
   queryContractState(contractAddress: string): Promise<{ data: unknown } | null>;
 }): Promise<Map<string, any>> {
@@ -1022,7 +1066,7 @@ export async function createQuestOnChain(
     );
   }
 
-  const criteriaStr = JSON.stringify(criteriaJson);
+  const criteriaStr = stableJsonStringify(criteriaJson);
   const criteriaBytes = new Uint8Array(256);
   criteriaBytes.set(textEncoder.encode(criteriaStr.slice(0, 256)));
 
@@ -1160,9 +1204,39 @@ export async function commitCompletionOnChain(
   const resolveQuestOnChainMeta = async (): Promise<{
     onChainQuestId: string;
     onChainCriteriaCommitment?: string;
+    criteriaJson?: Record<string, unknown>;
+    questType?: string;
   } | null> => {
-    // If caller already passed an on-chain quest id, we cannot infer criteria commitment.
+    // If caller passed an on-chain quest id, try to find the backing quest record
+    // so we can retrieve criteriaJson + type for criteria_bytes witnesses.
     if (isLikelyHexBytes32(questId)) {
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/quests`);
+        if (response.ok) {
+          const payload = (await response.json()) as {
+            items?: Array<{
+              onChainQuestId?: string;
+              onChainCriteriaCommitment?: string;
+              criteriaJson?: Record<string, unknown>;
+              type?: string;
+            }>;
+          };
+          const match = (payload.items ?? []).find(
+            (q) => (q.onChainQuestId ?? "").replace(/^0x/, "").toLowerCase() === questId.toLowerCase(),
+          );
+          if (match) {
+            return {
+              onChainQuestId: questId,
+              onChainCriteriaCommitment: match.onChainCriteriaCommitment,
+              criteriaJson: match.criteriaJson,
+              questType: match.type,
+            };
+          }
+        }
+      } catch {
+        // fall through
+      }
+
       return { onChainQuestId: questId };
     }
 
@@ -1174,6 +1248,8 @@ export async function commitCompletionOnChain(
       const quest = (await response.json()) as {
         onChainQuestId?: string;
         onChainCriteriaCommitment?: string;
+        criteriaJson?: Record<string, unknown>;
+        type?: string;
       };
       if (!quest.onChainQuestId) {
         return null;
@@ -1181,13 +1257,29 @@ export async function commitCompletionOnChain(
       return {
         onChainQuestId: quest.onChainQuestId,
         onChainCriteriaCommitment: quest.onChainCriteriaCommitment,
+        criteriaJson: quest.criteriaJson,
+        questType: quest.type,
       };
     } catch {
       return null;
     }
   };
 
+  const resolveReviewMeta = async (): Promise<{ threshold?: number } | null> => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/reviews/${encodeURIComponent(reviewId)}`);
+      if (!response.ok) {
+        return null;
+      }
+      const review = (await response.json()) as { threshold?: number };
+      return { threshold: review.threshold };
+    } catch {
+      return null;
+    }
+  };
+
   const questMeta = await resolveQuestOnChainMeta();
+  const reviewMeta = await resolveReviewMeta();
   const onChainQuestId = questMeta?.onChainQuestId ?? questId;
   if (!isLikelyHexBytes32(onChainQuestId)) {
     throw new Error(
@@ -1247,22 +1339,44 @@ export async function commitCompletionOnChain(
   const combinedBuf = new Uint8Array(reviewPayload.length + commitmentPayload.length);
   combinedBuf.set(reviewPayload);
   combinedBuf.set(commitmentPayload, reviewPayload.length);
-  const onChainCommitment = new Uint8Array(
+  // NOTE: This SHA-256 payload hash is *not* the quest criteria commitment.
+  // It's used only for off-chain tracking/UX and should NOT be passed into the circuit's
+  // `on_chain_commitment` argument (which is `persistentHash(criteria_bytes)`).
+  const payloadCommitment = new Uint8Array(
     await crypto.subtle.digest("SHA-256", combinedBuf),
   );
 
   // Align with the rest of the browser flows (admin decision / reward claim) which use the wallet address directly.
   const userSecretKey = toBytes32FromText(walletAddress);
+  const requiredEvidenceClassTag = evidenceClassTagFromQuestType(questMeta?.questType);
+
+  // NOTE: The quest-registry circuit commitment may incorporate the quest creator/caller secret key.
+  // Our quest creation path uses `toBytes32FromText(spaceId)` as `caller_secret_key`, so mirror it here
+  // to ensure verify_completion recomputes the same criteria commitment.
+  const callerSecretKey = toBytes32FromText(spaceId);
 
   const privateState: CompletionPrivateState = {
     userSecretKey,
-    adminSecretKey: adminKey,
+    adminSecretKey: callerSecretKey,
     evidenceHash: toBytes32FromHex(evidenceHash),
-    evidenceClassRaw: (() => { const b = new Uint8Array(8); b.set(textEncoder.encode(evidenceClass.slice(0, 8))); return b; })(),
+    evidenceClassRaw: (() => {
+      const b = new Uint8Array(8);
+      b.set(textEncoder.encode(requiredEvidenceClassTag.slice(0, 8)));
+      return b;
+    })(),
     verificationScore: BigInt(Math.round(score)),
-    criteriaBytes: ZERO_256.slice(),
-    requiredEvidenceClass: ZERO_8.slice(),
-    minScoreThreshold: 0n,
+    criteriaBytes: (() => {
+      const json = stableJsonStringify(questMeta?.criteriaJson ?? {});
+      const bytes = new Uint8Array(256);
+      bytes.set(textEncoder.encode(json.slice(0, 256)));
+      return bytes;
+    })(),
+    requiredEvidenceClass: (() => {
+      const b = new Uint8Array(8);
+      b.set(textEncoder.encode(requiredEvidenceClassTag.slice(0, 8)));
+      return b;
+    })(),
+    minScoreThreshold: BigInt(Math.max(0, Math.floor(reviewMeta?.threshold ?? 0))),
     freqSlotsRequired: 0n,
     lastCompletionSlot: 0n,
     currentSlot,
@@ -1289,7 +1403,9 @@ export async function commitCompletionOnChain(
     toBytes32FromText(sprintId),
     toBytes32FromText(spaceId),
     adminKey,
-    onChainCommitment,
+    // `verify_completion` asserts `persistentHash(criteria_bytes) == on_chain_commitment`
+    // so we must pass the quest's on-chain criteria commitment here.
+    toBytes32FromHex(criteriaCommitmentHex),
     BigInt(Math.min(xpValue, 65535)),
   );
 
@@ -1299,7 +1415,7 @@ export async function commitCompletionOnChain(
   const certIdBuf = new Uint8Array(
     await crypto.subtle.digest(
       "SHA-256",
-      textEncoder.encode(`${reviewId}:${bytesToHex(onChainCommitment)}`),
+      textEncoder.encode(`${reviewId}:${bytesToHex(payloadCommitment)}`),
     ),
   );
   const certId = bytesToHex(certIdBuf);
