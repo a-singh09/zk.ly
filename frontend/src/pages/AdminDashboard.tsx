@@ -62,6 +62,7 @@ export default function AdminDashboard() {
     [],
   );
   const [policies, setPolicies] = useState<ReviewerPolicyRecord[]>([]);
+  const [expandedThinking, setExpandedThinking] = useState<string | null>(null);
 
   const [spaceName, setSpaceName] = useState("");
   const [spaceDesc, setSpaceDesc] = useState("");
@@ -639,6 +640,31 @@ export default function AdminDashboard() {
                     </div>
                   </div>
 
+                  {item.reviewThinking && (
+                    <div className="mb-4">
+                      <button
+                        onClick={() =>
+                          setExpandedThinking(
+                            expandedThinking === item.commitmentId
+                              ? null
+                              : item.commitmentId,
+                          )
+                        }
+                        className="text-[10px] uppercase tracking-[0.15em] text-bright-blue font-bold hover:text-bright-blue/80 transition-colors flex items-center gap-1.5"
+                      >
+                        {expandedThinking === item.commitmentId
+                          ? "Hide AI reasoning"
+                          : "View AI reasoning steps"}
+                        <Activity size={10} />
+                      </button>
+                      {expandedThinking === item.commitmentId && (
+                        <div className="mt-2 p-4 bg-[#0A0A0A] border border-white/5 text-sm text-white/70 leading-relaxed italic border-l-2 border-l-bright-blue">
+                          {item.reviewThinking}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   {item.verificationStatus === "pending-admin" ? (
                     <div className="flex gap-3">
                       <button
@@ -700,6 +726,31 @@ export default function AdminDashboard() {
                   <p className="font-mono text-xs text-white/60 break-all mb-4">
                     {item.artifactUrl}
                   </p>
+
+                  {item.reviewThinking && (
+                    <div className="mb-4">
+                      <button
+                        onClick={() =>
+                          setExpandedThinking(
+                            expandedThinking === item.escalationId
+                              ? null
+                              : item.escalationId,
+                          )
+                        }
+                        className="text-[10px] uppercase tracking-[0.15em] text-bright-blue font-bold hover:text-bright-blue/80 transition-colors flex items-center gap-1.5"
+                      >
+                        {expandedThinking === item.escalationId
+                          ? "Hide original AI reasoning"
+                          : "View original AI reasoning steps"}
+                        <Activity size={10} />
+                      </button>
+                      {expandedThinking === item.escalationId && (
+                        <div className="mt-2 p-4 bg-[#0A0A0A] border border-white/5 text-sm text-white/70 leading-relaxed italic border-l-2 border-l-bright-blue">
+                          {item.reviewThinking}
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   {item.status === "pending-admin" ? (
                     <div className="flex gap-3">

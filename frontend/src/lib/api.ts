@@ -24,6 +24,7 @@ export interface AiReviewResponse {
     originality: number;
     relevance: number;
   };
+  thinking?: string;
   reviewedAt: string;
 }
 
@@ -122,6 +123,7 @@ export interface EscalationRecord {
   artifactUrl: string;
   reason: string;
   notes?: string;
+  reviewThinking?: string;
   requestedByWallet: string;
   status: EscalationStatus;
   requestedAt: string;
@@ -156,6 +158,7 @@ export interface RewardApprovalRecord {
   artifactUrl: string;
   reviewScore: number;
   reviewPassed: boolean;
+  reviewThinking?: string;
   verificationStatus: "pending-admin" | "approved" | "rejected" | "claimed";
   rewardStatus: "none" | "awaiting-admin" | "claimable" | "claimed" | "rejected";
   rewardMode: RewardMode;

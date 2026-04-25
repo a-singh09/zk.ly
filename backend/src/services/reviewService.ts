@@ -30,6 +30,7 @@ interface ScoreResult {
   };
   summary: string;
   analysisMessage: string;
+  thinking?: string;
 }
 
 function scoreFromInput(input: ReviewRequest): ScoreResult {
@@ -58,6 +59,9 @@ function scoreFromInput(input: ReviewRequest): ScoreResult {
     analysisMessage: passed
       ? "Mock AI analysis: structure, technical consistency, and rubric alignment passed for demo-mode verification."
       : "Mock AI analysis: submission missed rubric threshold on completeness and relevance. Escalate to admin review if evidence should still qualify.",
+    thinking: passed
+      ? "The submission was evaluated against the technical rubric. It demonstrated a clear understanding of zero-knowledge concepts and provided well-documented code examples. The structure is logical, and the content is highly relevant to the Midnight ecosystem. All verification checks passed with high confidence."
+      : "The submission was evaluated but failed to meet the required threshold. Key technical details regarding proof generation were missing, and the explanation of shielded transactions was too brief. To improve the score, the author should provide more depth in the implementation section and ensure all rubric criteria are addressed.",
   };
 }
 
@@ -102,7 +106,8 @@ Evaluate the following dev.to blog post against this rubric. Return ONLY a JSON 
   "completeness": <integer 0-100>,
   "originality": <integer 0-100>,
   "relevance": <integer 0-100>,
-  "summary": "<one sentence summary of the review>"
+  "summary": "<one sentence summary of the review>",
+  "thinking": "<a detailed paragraph explaining your reasoning, the steps you took to evaluate the post, and specific feedback on why you gave these scores>"
 }
 
 Rubric:
@@ -135,6 +140,7 @@ ${body}`;
       originality?: number;
       relevance?: number;
       summary?: string;
+      thinking?: string;
     };
 
     const accuracy = Math.min(100, Math.max(0, raw.accuracy ?? 60));
@@ -155,6 +161,7 @@ ${body}`;
           : "AI review did not clear the threshold."),
       analysisMessage:
         "Live AI analysis completed via OpenAI using fetched dev.to article data.",
+      thinking: raw.thinking ?? "AI reasoning was generated but not explicitly returned in the specified format.",
     };
   } catch {
     return null;
@@ -186,7 +193,7 @@ function buildReview(params: {
   reviewMode: ReviewRecord["reviewMode"];
 }): ReviewRecord {
   const { reviewId, spaceId, questId, artifactUrl, artifactText } = params;
-  const { score, breakdown, summary, analysisMessage } = params.scoring;
+  const { score, breakdown, summary, analysisMessage, thinking } = params.scoring;
   const threshold = params.threshold;
   const passed = score >= threshold;
   const evidenceHash = createHash("sha256")
@@ -209,6 +216,7 @@ function buildReview(params: {
     evidenceHash: `0x${evidenceHash}`,
     summary,
     breakdown,
+    thinking,
     reviewedAt: new Date().toISOString(),
   };
 }

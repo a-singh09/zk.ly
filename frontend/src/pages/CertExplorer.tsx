@@ -27,6 +27,7 @@ export default function CertExplorer() {
   const [record, setRecord] = useState<CommitmentResponse | null>(null);
   const [claiming, setClaiming] = useState(false);
   const [claimError, setClaimError] = useState<string | null>(null);
+  const [showThinking, setShowThinking] = useState(false);
   const { walletAddress, signWalletAuthorization, connectedWalletApi } =
     useMidnightWallet();
 
@@ -335,15 +336,31 @@ export default function CertExplorer() {
                   {claiming ? "Claiming..." : "Claim Escrow Reward"}
                 </button>
               )}
-              <Link
-                to="#"
-                className="px-8 py-4 bg-bright-blue text-white font-bold tracking-widest hover:bg-[#0000FE]/90 transition-colors text-sm uppercase whitespace-nowrap border border-bright-blue"
-              >
-                Verify AI Audit Logs
-              </Link>
+              {record?.review?.thinking && (
+                <button
+                  onClick={() => setShowThinking(!showThinking)}
+                  className="px-8 py-4 bg-bright-blue text-white font-bold tracking-widest hover:bg-[#0000FE]/90 transition-colors text-sm uppercase whitespace-nowrap border border-bright-blue"
+                >
+                  {showThinking ? "Hide AI Audit Logs" : "Verify AI Audit Logs"}
+                </button>
+              )}
             </div>
             {claimError && (
               <div className="mt-4 text-sm text-red-300">{claimError}</div>
+            )}
+            {showThinking && record?.review?.thinking && (
+              <div className="mt-8 p-6 bg-[#0A0A0A] border border-white/10 border-l-4 border-l-bright-blue animate-in fade-in slide-in-from-top-4 duration-300">
+                <h5 className="text-[10px] uppercase tracking-[0.3em] text-bright-blue font-black mb-4 flex items-center gap-2">
+                  <ShieldCheck size={14} /> Cryptographic Reasoning Witness
+                </h5>
+                <p className="text-white/80 leading-relaxed text-sm italic font-serif">
+                  "{record.review.thinking}"
+                </p>
+                <div className="mt-6 pt-4 border-t border-white/5 flex items-center justify-between text-[10px] uppercase tracking-widest text-white/30">
+                  <span>Audited by {resolvedAgent}</span>
+                  <span>Review Hash: {record.review.evidenceHash.slice(0, 16)}...</span>
+                </div>
+              </div>
             )}
           </div>
         </div>

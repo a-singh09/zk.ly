@@ -794,6 +794,18 @@ export default function QuestClaim() {
                     </p>
                   </div>
 
+                  {reviewResult.thinking && (
+                    <div className="border border-white/10 bg-[#0A0A0A] p-4">
+                      <div className="text-white/40 uppercase tracking-widest text-[11px] mb-3 flex items-center gap-2">
+                        <Sparkles size={12} className="text-bright-blue" />
+                        AI Reasoning & Steps
+                      </div>
+                      <div className="text-white/80 leading-relaxed text-xs italic border-l border-white/20 pl-4 py-1">
+                        {reviewResult.thinking}
+                      </div>
+                    </div>
+                  )}
+
                   {/* Score breakdown */}
                   {reviewResult.breakdown && (
                     <div className="border border-white/10 bg-[#0A0A0A] p-4">

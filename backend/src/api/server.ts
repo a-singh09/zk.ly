@@ -53,6 +53,7 @@ function toRewardApprovalRecord(
     artifactUrl: string;
     score: number;
     passed: boolean;
+    thinking?: string;
   },
   commitment: {
     commitmentId: string;
@@ -77,6 +78,7 @@ function toRewardApprovalRecord(
     artifactUrl: review.artifactUrl,
     reviewScore: review.score,
     reviewPassed: review.passed,
+    reviewThinking: review.thinking,
     verificationStatus: commitment.verificationStatus,
     rewardStatus: commitment.rewardStatus,
     rewardMode: commitment.rewardMode,
