@@ -5,8 +5,7 @@
   "type": "module",
   "scripts": {
     "compile": "npm run compile:all",
-    "compile:all": "npm run compile:hello-world && npm run compile:quest-registry && npm run compile:completion-registry && npm run compile:reward-escrow",
-    "compile:hello-world": "compact compile contracts/hello-world.compact contracts/managed/hello-world",
+    "compile:all": "npm run compile:quest-registry && npm run compile:completion-registry && npm run compile:reward-escrow",
     "compile:quest-registry": "compact compile contracts/quest-registry.compact contracts/managed/quest-registry",
     "compile:completion-registry": "compact compile contracts/completion-registry.compact contracts/managed/completion-registry",
     "compile:reward-escrow": "compact compile contracts/reward-escrow.compact contracts/managed/reward-escrow",
