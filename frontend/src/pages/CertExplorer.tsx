@@ -7,11 +7,6 @@ import {
   Share,
   ExternalLink,
   CheckCircle,
-  AlertCircle,
-  Unlock,
-  Eye,
-  EyeOff,
-  Lock,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import {

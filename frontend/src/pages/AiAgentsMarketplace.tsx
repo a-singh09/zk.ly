@@ -43,7 +43,7 @@ export default function AiAgentsMarketplace() {
             factualAccuracy: 0.35,
             clarity: 0.2,
             originality: 0.1,
-          },
+          } as Record<string, number>,
           steps: [
             "Explain the concept clearly with correct terminology.",
             "Include at least one runnable or verifiable example.",

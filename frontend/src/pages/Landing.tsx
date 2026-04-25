@@ -3,25 +3,15 @@ import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { Link } from "react-router-dom";
-import { Loader2, Wallet } from "lucide-react";
-import {
-  truncateAddress,
-  useMidnightWallet,
-} from "../lib/MidnightWalletContext";
+import { useMidnightWallet } from "../lib/MidnightWalletContext";
+import Navbar from "../components/Navbar";
 
 gsap.registerPlugin(ScrollTrigger);
 
 export default function Landing() {
   const container = useRef<HTMLDivElement>(null);
   const headlineRef = useRef<HTMLDivElement>(null);
-  const {
-    isConnected,
-    isConnecting,
-    walletAddress,
-    connectWallet,
-    walletError,
-    clearWalletError,
-  } = useMidnightWallet();
+  const { walletError } = useMidnightWallet();
 
   useGSAP(
     () => {
@@ -98,38 +88,7 @@ export default function Landing() {
 
   return (
     <div ref={container} className="w-full min-h-screen bg-[#0A0A0A]">
-      <header className="absolute top-0 w-full z-40 py-6 border-b border-white/10">
-        <div className="max-w-7xl mx-auto px-6 flex justify-between items-center">
-          <Link
-            to="/"
-            className="flex items-center border border-white/20 px-4 py-2 hover:border-bright-blue transition-colors bg-[#0A0A0A]"
-          >
-            <span className="font-heading font-black text-2xl tracking-widest uppercase text-bright-blue">
-              ZK
-            </span>
-            <span className="font-heading font-black text-2xl tracking-widest uppercase text-white">
-              .LY
-            </span>
-          </Link>
-          <button
-            onClick={() => {
-              clearWalletError();
-              void connectWallet();
-            }}
-            disabled={isConnecting || isConnected}
-            className="px-6 py-3 bg-white text-midnight font-bold tracking-widest hover:bg-white/90 transition-colors uppercase text-sm border border-white disabled:opacity-70 disabled:cursor-not-allowed flex items-center gap-2"
-          >
-            {isConnecting ? (
-              <Loader2 size={16} className="animate-spin" />
-            ) : (
-              <Wallet size={16} />
-            )}
-            {isConnected && walletAddress
-              ? `Connected ${truncateAddress(walletAddress)}`
-              : "Connect Wallet"}
-          </button>
-        </div>
-      </header>
+      <Navbar />
 
       <section
         className="relative min-h-screen flex flex-col justify-center items-center px-6 pt-24 pb-12 overflow-hidden"
