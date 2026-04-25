@@ -1,11 +1,29 @@
 # zk.ly — Zealy, but **proof-first**
-**Tagline:** *Replace “trust me” quests with AI-reviewed, ZK-certified completions on Midnight.*
+
+----
+
+*Replace “trust me” quests with AI-reviewed, ZK-certified completions on Midnight.*
 
 zk.ly is a **Zealy alternative** where every quest completion can become a **verifiable ZK certificate**—and **AI-reviewed quests are governed and auditable** (no black-box approvals).
 
-Core flow:
+Core flow (hackathon scope):
 
-- dev.to blog submission → AI rubric review → proof/certificate lifecycle → admin approval → optional escrow claim
+- Technical blog submission → AI rubric review → proof/certificate lifecycle → admin approval → optional escrow claim
+
+Hackathon track:
+
+- **AI Track** (AI-reviewed quests + auditable policy steps)
+
+---
+
+## Preprod deployment
+
+- **Live app (Render)**: `http://zk-ly-615h.onrender.com`
+- **Network**: `preprod`
+- **Contract addresses**:
+  - **Quest Registry**: `2adc5eb8746273a867292697d97f38bb3f183960081f062856c23f272de74187`
+  - **Completion Registry**: `e9a7c61d713b77629344c2ed0390ae953396539668f9719f0e1404e2f8452120`
+  - **Reward Escrow**: `a4b1ff33ed2b0ed5c67600a47006cc6c229571252ac0b8f1dfb121c8fdaff6d5`
 
 ---
 
@@ -66,29 +84,29 @@ Midnight enables:
 
 ---
 
-## Architecture (Mermaid)
+## Architecture
 
 ```mermaid
 flowchart TB
-  U[User] -->|submit dev.to URL| FE[Frontend (Vite + React)]
-  A[Admin] -->|approve/reject| FE
-  FE -->|HTTP JSON| BE[Backend API (Node/TS)]
+  U[User] -->|"submit dev.to URL"| FE["Frontend (Vite + React)"]
+  A[Admin] -->|"approve/reject"| FE
+  FE -->|"HTTP JSON"| BE["Backend API (Node/TS)"]
 
   subgraph AI["AI Review (blog adapter)"]
-    BE -->|fetch dev.to article| DEVTO[dev.to API]
-    BE -->|score rubric| LLM[OpenAI]
+    BE -->|"fetch dev.to article"| DEVTO["dev.to API"]
+    BE -->|"score rubric"| LLM["OpenAI"]
   end
 
-  BE -->|witness inputs| PS[Local Proof Server :6300]
+  BE -->|"witness inputs"| PS["Local Proof Server (:6300)"]
 
   subgraph Midnight["Midnight Network"]
-    C1[quest-registry.compact\n(criteria_commitment, reward config)]
-    C2[completion-registry.compact\n(cert lifecycle, commitments)]
-    C3[reward-escrow.compact\n(reserve + claim)]
+    C1["quest-registry.compact\n(criteria_commitment, reward config)"]
+    C2["completion-registry.compact\n(cert lifecycle, commitments)"]
+    C3["reward-escrow.compact\n(reserve + claim)"]
   end
 
-  PS -->|proof + tx| Midnight
-  BE -->|index/cache| IDX[Indexer (GraphQL + WS)]
+  PS -->|"proof + tx"| Midnight
+  BE -->|"index/cache"| IDX["Indexer (GraphQL + WS)"]
   IDX --> FE
 ```
 
@@ -96,7 +114,7 @@ flowchart TB
 
 ## End-to-end flow
 
-### User flow (dev.to blog quest)
+### User flow (Technical blog quest)
 
 - **Pick a quest** in a Space/Sprint
 - **Submit dev.to URL**
@@ -191,8 +209,6 @@ See `contracts/README.md` for:
 - `frontend/` — Vite + React dApp and admin console
 - `backend/` — API, in-memory store, AI review adapter, Midnight integration toggles
 - `contracts/` — Compact contracts + deploy/CLI helpers + proof server compose
-- `ARCHITECTURE.md` — deep product/architecture write-up (source of truth)
-- `HACKATHON_TASKS.md` — scope breakdown + integration plan
 
 ---
 
