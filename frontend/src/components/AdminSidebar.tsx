@@ -7,6 +7,7 @@ import {
   Loader2,
   LogOut,
   Wallet,
+  Store,
 } from "lucide-react";
 import {
   truncateAddress,
@@ -26,9 +27,14 @@ export default function AdminSidebar() {
   const adminItems = [
     { label: "Creator Console", icon: <Settings size={22} />, path: "/admin" },
     {
-      label: "AI Review Policy",
+      label: "AI Agents",
       icon: <Bot size={22} />,
       path: "/admin/reviewers",
+    },
+    {
+      label: "Marketplace",
+      icon: <Store size={22} />,
+      path: "/admin/ai-agents/marketplace",
     },
   ];
 

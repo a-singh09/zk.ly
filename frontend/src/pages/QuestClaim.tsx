@@ -7,13 +7,8 @@ import {
   Sparkles,
   Wallet,
   Lock,
-  Unlock,
-  Eye,
-  EyeOff,
   Circle,
   CheckCircle,
-  AlertCircle,
-  Zap,
   Server,
 } from "lucide-react";
 import { useNotification } from "../lib/NotificationContext";
@@ -45,31 +40,19 @@ function ProofModeBadge({
   reason?: string;
 }) {
   if (!mode) return null;
-  const isMidnight = mode === "midnight";
   return (
     <div
-      className={`border px-4 py-3 text-sm flex items-start gap-3 ${
-        isMidnight
-          ? "border-emerald-500/40 bg-emerald-500/5 text-emerald-200"
-          : "border-amber-400/30 bg-amber-500/5 text-amber-200"
-      }`}
+      className="border px-4 py-3 text-sm flex items-start gap-3 border-white/10 bg-white/5 text-white/70"
     >
       <div className="mt-0.5">
-        {isMidnight ? (
-          <CheckCircle size={16} className="text-emerald-400" />
-        ) : (
-          <AlertCircle size={16} className="text-amber-400" />
-        )}
+        <CheckCircle size={16} className="text-emerald-400" />
       </div>
       <div>
         <div className="font-bold uppercase tracking-widest text-[11px] mb-1">
-          {isMidnight ? "ZK Proof — Midnight Network" : "Local Fallback Mode"}
+          Status
         </div>
         <div className="text-white/70 text-xs leading-5">
-          {isMidnight
-            ? "Completion proof has been committed for Midnight verification. The quest is now waiting for admin approval before any escrow reward can be claimed."
-            : reason ||
-              "Midnight contracts are not yet deployed. Running in local commitment mode while preserving the pending-admin reward lifecycle."}
+          {reason || "Commitment submitted."}
         </div>
       </div>
     </div>
@@ -78,131 +61,22 @@ function ProofModeBadge({
 
 // ─── Privacy Split Panel ─────────────────────────────────────────────────────
 
-function PrivacyBreakdown({ commitment }: { commitment: CommitmentResponse }) {
-  const isMidnight = commitment.proofMode === "midnight";
+function PrivacyBreakdown({
+  commitment: _commitment,
+}: {
+  commitment: CommitmentResponse;
+}) {
   return (
     <div className="border border-white/10 bg-[#0A0A0A] mt-4">
       <div className="px-4 py-2 border-b border-white/10 text-[10px] uppercase tracking-widest text-white/40 flex items-center gap-2">
         <Lock size={12} />
-        ZK Privacy Model — What goes on-chain
+        Details
       </div>
       <div className="divide-y divide-white/5">
-        {/* Public on-chain */}
-        <div className="px-4 py-3 flex items-start gap-3">
-          <Unlock size={14} className="text-emerald-400 mt-0.5 shrink-0" />
-          <div>
-            <div className="text-[10px] uppercase tracking-widest text-emerald-400 mb-1 font-bold">
-              Public (on-chain)
-            </div>
-            <div className="text-xs text-white/70 space-y-0.5">
-              <div>
-                • <span className="font-mono text-white/90">quest_id</span>:{" "}
-                which quest was completed
-              </div>
-              <div>
-                • <span className="font-mono text-white/90">xp_awarded</span>:{" "}
-                XP value (reward amount)
-              </div>
-              <div>
-                • <span className="font-mono text-white/90">status</span>:{" "}
-                VERIFIED / REJECTED
-              </div>
-              <div>
-                • <span className="font-mono text-white/90">completer_key</span>
-                : pseudonymous identity hash
-              </div>
-              <div>
-                • <span className="font-mono text-white/90">issued_at</span>:{" "}
-                block slot timestamp
-              </div>
-            </div>
-          </div>
+        <div className="px-4 py-3 text-xs text-white/60 leading-6">
+          This section intentionally hides infrastructure details. You can still
+          view your commitment ID and status below.
         </div>
-        {/* Selectively disclosed */}
-        <div className="px-4 py-3 flex items-start gap-3">
-          <Eye size={14} className="text-blue-400 mt-0.5 shrink-0" />
-          <div>
-            <div className="text-[10px] uppercase tracking-widest text-blue-400 mb-1 font-bold">
-              Selectively Disclosed (opt-in)
-            </div>
-            <div className="text-xs text-white/70 space-y-0.5">
-              <div>
-                • <span className="font-mono text-white/90">passed_flag</span>:{" "}
-                pass/fail (no score) —{" "}
-                <span
-                  className={
-                    commitment.review?.passed
-                      ? "text-emerald-300"
-                      : "text-amber-300"
-                  }
-                >
-                  {commitment.review?.passed ? "✓ passed" : "✗ failed"}
-                </span>
-              </div>
-              <div>
-                • <span className="font-mono text-white/90">score_band</span>:
-                tier bucket (bronze/silver/gold) not raw score
-              </div>
-              <div>
-                •{" "}
-                <span className="font-mono text-white/90">evidence_class</span>:
-                proof type e.g. AI_SCORE
-              </div>
-            </div>
-            <div className="mt-2 font-mono text-[10px] text-white/50 break-all">
-              hash:{" "}
-              {commitment.selectiveDisclosureHash || commitment.commitmentHash}
-            </div>
-          </div>
-        </div>
-        {/* Private */}
-        <div className="px-4 py-3 flex items-start gap-3">
-          <EyeOff size={14} className="text-white/40 mt-0.5 shrink-0" />
-          <div>
-            <div className="text-[10px] uppercase tracking-widest text-white/40 mb-1 font-bold">
-              Private (ZK witness — never on-chain)
-            </div>
-            <div className="text-xs text-white/50 space-y-0.5">
-              <div>
-                • Raw AI review score ({commitment.review?.score ?? "—"})
-              </div>
-              <div>• Full AI analysis and breakdown</div>
-              <div>
-                • Raw wallet address (only the pseudonymous hash is stored)
-              </div>
-              <div>• Quest acceptance criteria bytes</div>
-            </div>
-          </div>
-        </div>
-        {/* Commitment hashes */}
-        {isMidnight && (
-          <div className="px-4 py-3">
-            <div className="text-[10px] uppercase tracking-widest text-white/40 mb-2 flex items-center gap-1">
-              <Zap size={10} />
-              On-Chain Commitment Hashes
-            </div>
-            <div className="space-y-1.5">
-              {commitment.onChainReviewCommitmentHash && (
-                <div className="font-mono text-[10px] text-white/60 break-all">
-                  <span className="text-white/40">review_commitment: </span>
-                  {commitment.onChainReviewCommitmentHash}
-                </div>
-              )}
-              {commitment.onChainCommitmentCommitmentHash && (
-                <div className="font-mono text-[10px] text-white/60 break-all">
-                  <span className="text-white/40">commitment_commitment: </span>
-                  {commitment.onChainCommitmentCommitmentHash}
-                </div>
-              )}
-              {commitment.onChainCertificateId && (
-                <div className="font-mono text-[10px] text-emerald-300 break-all">
-                  <span className="text-emerald-400/60">cert_id: </span>
-                  {commitment.onChainCertificateId}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );
@@ -216,29 +90,11 @@ function MidnightStatusBanner({
   health: MidnightHealthStatus | null;
 }) {
   if (!health) return null;
-  const enabled = health.midnight.enabled;
   return (
-    <div
-      className={`border-b text-xs px-8 py-2 flex items-center gap-3 font-mono ${
-        enabled
-          ? "border-emerald-500/20 bg-emerald-500/5 text-emerald-300"
-          : "border-amber-400/20 bg-amber-500/5 text-amber-300"
-      }`}
-    >
+    <div className="border-b text-xs px-8 py-2 flex items-center gap-3 font-mono border-white/10 bg-[#161616] text-white/40">
       <Server size={12} />
-      <span className="font-bold uppercase tracking-widest">
-        Midnight Runtime:
-      </span>
-      <span className={enabled ? "text-emerald-200" : "text-amber-200"}>
-        {enabled
-          ? "Contracts deployed · ZK proofs enabled"
-          : health.midnight.reason || "Fallback mode"}
-      </span>
-      {health.midnight.questContractAddress && (
-        <span className="text-white/30 hidden md:inline">
-          · quest: {health.midnight.questContractAddress.slice(0, 12)}…
-        </span>
-      )}
+      <span className="font-bold uppercase tracking-widest">Status:</span>
+      <span className="text-white/60">Online</span>
     </div>
   );
 }
@@ -361,7 +217,7 @@ export default function QuestClaim() {
       });
       setReviewResult(review);
       notifyComplete(
-        "AI review completed. ZK commitment authorization is now available.",
+        "AI review completed.",
       );
     } catch (reviewError) {
       setError(
@@ -494,7 +350,7 @@ export default function QuestClaim() {
       notifyComplete(
         onChainCertId
           ? `Completion submitted. Admin approval is now required before reward claim.`
-          : "Commitment saved. Connect Midnight Lace wallet to register the completion intent.",
+          : "Commitment saved.",
       );
       setTimeout(() => {
         navigate(`/proof/${commitment.commitmentId}`);
@@ -554,7 +410,7 @@ export default function QuestClaim() {
           <div className="w-8 h-px bg-white/10" />
           <StepIndicator
             step={3}
-            label="ZK Commitment"
+            label="Commitment"
             status={
               currentStep >= 3
                 ? "done"
@@ -576,13 +432,11 @@ export default function QuestClaim() {
               Quest {questId ?? "blog-quest-demo"}
             </p>
             <h1 className="text-4xl font-bold font-heading mb-6 uppercase tracking-tight">
-              Submit & Generate ZK Proof
+              Submit for Review
             </h1>
             <p className="text-white/60 mb-8 text-lg max-w-2xl">
-              Submit your dev.to artifact, run the AI policy review, then
-              authorize the ZK commitment. Your score and review details stay
-              private — only the pass/fail result and XP are disclosed on
-              Midnight.
+              Submit your artifact, run the AI agents review, then confirm the
+              commitment step.
             </p>
 
             {/* Artifact URL */}
@@ -718,23 +572,11 @@ export default function QuestClaim() {
                 </h2>
               </div>
               <p className="text-white/60 text-sm leading-7">
-                The Midnight DApp Connector is used to read your shielded
-                address and approve signing popups for claim authorization. Your
-                wallet signing key never leaves your device.
+                Your wallet can be used to authorize the commitment step. Your
+                signing key never leaves your device.
               </p>
               <div className="mt-5 border border-white/10 bg-[#0A0A0A] p-4 text-sm font-mono text-white/80 break-all">
                 {isConnected ? walletAddress : "Wallet not connected yet"}
-              </div>
-
-              {/* ZK privacy note */}
-              <div className="mt-4 border border-white/5 bg-[#0A0A0A] px-4 py-3 text-[11px] text-white/40 leading-5">
-                <span className="text-white/60 font-bold">ZK Identity:</span>{" "}
-                Your wallet address is hashed with a prefix inside the Compact
-                circuit. Only{" "}
-                <span className="font-mono text-white/60">
-                  hash("zkquest:completer:" + secret_key)
-                </span>{" "}
-                is stored on-chain — never your raw address.
               </div>
             </div>
 
@@ -783,7 +625,7 @@ export default function QuestClaim() {
                       }
                     >
                       {reviewResult.passed
-                        ? "✓ Passed — eligible for ZK commitment"
+                        ? "✓ Passed — eligible to continue"
                         : "✗ Below threshold"}
                     </div>
                     <p className="mt-3 text-white/60 leading-7">
@@ -810,7 +652,7 @@ export default function QuestClaim() {
                   {reviewResult.breakdown && (
                     <div className="border border-white/10 bg-[#0A0A0A] p-4">
                       <div className="text-white/40 uppercase tracking-widest text-[11px] mb-3">
-                        Score Breakdown (ZK private)
+                        Score Breakdown
                       </div>
                       <div className="space-y-2">
                         {Object.entries(reviewResult.breakdown).map(
@@ -838,10 +680,6 @@ export default function QuestClaim() {
                             </div>
                           ),
                         )}
-                      </div>
-                      <div className="mt-3 text-[10px] text-white/30 flex items-center gap-1">
-                        <EyeOff size={10} />
-                        This breakdown is a ZK witness — not stored on-chain
                       </div>
                     </div>
                   )}
@@ -917,43 +755,8 @@ export default function QuestClaim() {
                 <div>
                   <p className="text-white/50 text-sm leading-7 mb-4">
                     Once the AI review passes, authorize the commitment with
-                    your wallet popup. The backend only records signed
-                    authorization metadata; it no longer signs as an operator
-                    wallet. The{" "}
-                    <span className="font-mono text-white/70">
-                      verify_completion()
-                    </span>{" "}
-                    Compact call path can then be submitted through wallet-led
-                    transaction flows.
+                    your wallet popup.
                   </p>
-                  {/* Privacy preview */}
-                  <div className="border border-white/5 bg-[#0A0A0A] p-4 text-xs text-white/40 space-y-2">
-                    <div className="flex items-center gap-2 text-white/60 font-bold mb-3">
-                      <Lock size={12} />
-                      ZK Privacy preview
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Unlock size={10} className="text-emerald-400" />
-                      <span className="text-white/50">
-                        Public on-chain:
-                      </span>{" "}
-                      quest_id, xp_awarded, status, completer_key (hash)
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Eye size={10} className="text-blue-400" />
-                      <span className="text-white/50">
-                        Selectively disclosed:
-                      </span>{" "}
-                      passed_flag, score_band
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <EyeOff size={10} className="text-white/30" />
-                      <span className="text-white/50">
-                        Private (ZK witness):
-                      </span>{" "}
-                      raw score, AI analysis, wallet address
-                    </div>
-                  </div>
                 </div>
               )}
             </div>

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import {
   Activity,
   AlertTriangle,
@@ -8,6 +8,7 @@ import {
   Plus,
   Shield,
   Settings,
+  Store,
 } from "lucide-react";
 import Editor from "react-simple-code-editor";
 import Prism from "prismjs";
@@ -41,8 +42,17 @@ const tabs = [
   "Spaces",
   "Rewards",
   "Escalations",
-  "Policies",
+  "AI Agents",
   "Disclosures",
+] as const;
+
+const modelOptions = [
+  "gpt-4.1-mini",
+  "gpt-4.1",
+  "gpt-4o-mini",
+  "gpt-4o",
+  "gpt-5.5-medium",
+  "claude-4.6-sonnet-medium-thinking",
 ] as const;
 
 function formatDate(iso: string) {
@@ -54,6 +64,7 @@ function highlightJson(code: string) {
 }
 
 export default function AdminDashboard() {
+  const location = useLocation();
   const [activeTab, setActiveTab] = useState<(typeof tabs)[number]>("Overview");
   const [spaces, setSpaces] = useState<SpaceRecord[]>([]);
   const [disclosures, setDisclosures] = useState<DisclosureRecord[]>([]);
@@ -148,6 +159,41 @@ export default function AdminDashboard() {
   useEffect(() => {
     void loadAdminData();
   }, []);
+
+  useEffect(() => {
+    const state = (location.state ?? {}) as {
+      activeTab?: (typeof tabs)[number];
+      aiAgentTemplate?: {
+        agentId?: string;
+        model?: string;
+        category?: string;
+        scoreThreshold?: string;
+        maxTokens?: string;
+        timeoutMs?: string;
+        retryLimit?: string;
+        configJson?: string;
+      };
+    };
+
+    if (state.activeTab) {
+      setActiveTab(state.activeTab);
+    }
+    if (state.aiAgentTemplate) {
+      const t = state.aiAgentTemplate;
+      if (typeof t.agentId === "string") setPolicyAgentId(t.agentId);
+      if (typeof t.model === "string") setPolicyModel(t.model);
+      if (typeof t.category === "string") setPolicyCategory(t.category);
+      if (typeof t.scoreThreshold === "string")
+        setPolicyScoreThreshold(t.scoreThreshold);
+      if (typeof t.maxTokens === "string") setPolicyMaxTokens(t.maxTokens);
+      if (typeof t.timeoutMs === "string") setPolicyTimeoutMs(t.timeoutMs);
+      if (typeof t.retryLimit === "string") setPolicyRetryLimit(t.retryLimit);
+      if (typeof t.configJson === "string") setPolicyConfigJson(t.configJson);
+
+      setAdminMessage("Template imported. Review and click Create AI Agent.");
+      window.history.replaceState({}, document.title);
+    }
+  }, [location.state]);
 
   const handleCreateSpace = async () => {
     setAdminError(null);
@@ -309,7 +355,7 @@ export default function AdminDashboard() {
         steps?: string[];
       };
     } catch {
-      setAdminError("Policy JSON must be valid JSON.");
+      setAdminError("AI agents JSON must be valid JSON.");
       return;
     }
 
@@ -319,7 +365,7 @@ export default function AdminDashboard() {
       typeof dimensions !== "object" ||
       Array.isArray(dimensions)
     ) {
-      setAdminError("Policy JSON must include a 'dimensions' object.");
+      setAdminError("AI agents JSON must include a 'dimensions' object.");
       return;
     }
 
@@ -332,7 +378,7 @@ export default function AdminDashboard() {
 
     if (steps.length === 0) {
       setAdminError(
-        "Policy JSON must include a non-empty 'steps' array with review steps.",
+        "AI agents JSON must include a non-empty 'steps' array with review steps.",
       );
       return;
     }
@@ -351,13 +397,13 @@ export default function AdminDashboard() {
         retryLimit: Number(policyRetryLimit),
       });
       setPolicies((previous) => [created, ...previous]);
-      setAdminMessage("Reviewer policy created.");
-      setActiveTab("Policies");
+      setAdminMessage("AI agent created.");
+      setActiveTab("AI Agents");
     } catch (error) {
       setAdminError(
         error instanceof Error
           ? error.message
-          : "Could not create reviewer policy",
+          : "Could not create AI agent",
       );
     } finally {
       setSavingPolicy(false);
@@ -452,8 +498,7 @@ export default function AdminDashboard() {
               </h2>
               <ul className="space-y-3 text-sm text-white/70">
                 <li>
-                  AI review endpoint supports policy-aware scoring with
-                  deterministic fallback.
+                  AI review endpoint supports agent-aware scoring.
                 </li>
                 <li>
                   Reward queue now separates proof verification from escrow
@@ -463,8 +508,8 @@ export default function AdminDashboard() {
                   Escalation queue supports manual approve/reject workflow.
                 </li>
                 <li>
-                  Reviewer policy parameters and `steps` JSON are editable from
-                  this admin panel.
+                  AI agents parameters and `steps` JSON are editable from this
+                  admin panel.
                 </li>
                 <li>
                   Wallet-linked admin identity can be attached to decisions,
@@ -490,10 +535,15 @@ export default function AdminDashboard() {
                       <div className="text-xs uppercase tracking-widest text-white/40 mb-2">
                         Reward Approval
                       </div>
-                      <div className="text-sm text-white/80">
-                        {item.rewardAmount}{" "}
-                        {item.rewardMode === "escrow-auto" ? "escrow units" : "XP"} for{" "}
-                        {item.walletAddress}
+                      <div className="text-sm text-white/80 min-w-0">
+                        <span>
+                          {item.rewardAmount}{" "}
+                          {item.rewardMode === "escrow-auto" ? "escrow units" : "XP"}{" "}
+                          for{" "}
+                        </span>
+                        <span className="font-mono text-xs text-white/70 break-all">
+                          {item.walletAddress}
+                        </span>
                       </div>
                     </div>
                   ))}
@@ -788,13 +838,22 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {activeTab === "Policies" && (
+        {activeTab === "AI Agents" && (
           <div className="grid lg:grid-cols-[1.2fr_1fr] gap-6">
             <div className="border border-white/10 bg-midnight-light p-8">
-              <h2 className="text-lg font-bold uppercase tracking-widest mb-6 flex items-center gap-2">
-                <Plus size={16} className="text-bright-blue" />
-                Create Policy
-              </h2>
+              <div className="flex items-center justify-between gap-4 mb-6">
+                <h2 className="text-lg font-bold uppercase tracking-widest flex items-center gap-2">
+                  <Plus size={16} className="text-bright-blue" />
+                  Create AI Agent
+                </h2>
+                <Link
+                  to="/admin/ai-agents/marketplace"
+                  className="px-4 py-2 border border-white/20 text-white/70 text-xs font-bold uppercase tracking-widest hover:border-bright-blue hover:text-bright-blue transition-colors flex items-center gap-2"
+                >
+                  <Store size={14} />
+                  Marketplace
+                </Link>
+              </div>
               <div className="grid md:grid-cols-2 gap-4">
                 <input
                   value={policyAgentId}
@@ -802,12 +861,17 @@ export default function AdminDashboard() {
                   className="bg-midnight border border-white/10 p-3 font-mono text-sm"
                   placeholder="Agent ID"
                 />
-                <input
+                <select
                   value={policyModel}
                   onChange={(event) => setPolicyModel(event.target.value)}
                   className="bg-midnight border border-white/10 p-3 font-mono text-sm"
-                  placeholder="Model"
-                />
+                >
+                  {modelOptions.map((m) => (
+                    <option key={m} value={m}>
+                      {m}
+                    </option>
+                  ))}
+                </select>
                 <input
                   value={policyCategory}
                   onChange={(event) => setPolicyCategory(event.target.value)}
@@ -843,7 +907,7 @@ export default function AdminDashboard() {
               />
               <div className="mt-4 border border-white/10 bg-[#0A0A0A]">
                 <div className="px-3 py-2 border-b border-white/10 text-[11px] uppercase tracking-widest text-white/50 flex items-center justify-between">
-                  <span>Policy JSON (dimensions + steps)</span>
+                  <span>AI agents JSON (dimensions + steps)</span>
                   <button
                     type="button"
                     onClick={() =>
@@ -892,7 +956,7 @@ export default function AdminDashboard() {
                 disabled={savingPolicy}
                 className="mt-4 px-8 py-3 bg-bright-blue text-white font-bold tracking-widest uppercase border border-bright-blue disabled:opacity-70"
               >
-                {savingPolicy ? "Saving..." : "Create Policy"}
+                {savingPolicy ? "Saving..." : "Create AI Agent"}
               </button>
             </div>
 
@@ -985,8 +1049,7 @@ export default function AdminDashboard() {
 
         <div className="border border-white/10 bg-[#161616] p-5 text-xs text-white/50 flex items-center gap-2">
           <CheckCircle2 size={14} className="text-emerald-300" />
-          Admin actions run on hybrid API mode: on-chain when Midnight runtime
-          is ready, with local fallback pathways for offline development.
+          Admin actions are available from this panel.
         </div>
       </div>
     </div>
