@@ -1,5 +1,4 @@
 dist
 node_modules
-contracts/managed
 midnight-level-db
 .env
