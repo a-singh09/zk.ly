@@ -29,6 +29,8 @@ export function createEscalation(
     artifactUrl: request.artifactUrl?.trim() || review.artifactUrl,
     reason,
     notes: request.notes?.trim() || undefined,
+    reviewThinking: review.thinking,
+    reviewStepResults: review.stepResults,
     requestedByWallet:
       request.requestedByWallet?.trim() || "anonymous-requester",
     status: "pending-admin",

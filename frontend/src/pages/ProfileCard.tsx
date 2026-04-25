@@ -142,8 +142,8 @@ export default function ProfileCard() {
               </span>
             </div>
             <div className="text-center md:text-left mt-4">
-              <h1 className="text-3xl md:text-5xl font-bold font-mono tracking-tighter mb-4 text-white break-all">
-                {profile.wallet}
+              <h1 className="text-xl font-bold font-mono tracking-tighter mb-4 text-white break-all">
+                {profile.wallet.slice(0, 6)}...{profile.wallet.slice(-4)}
               </h1>
               <div
                 className={`inline-flex items-center gap-3 px-6 py-2 ${tierStyles.bg} ${tierStyles.text} border ${tierStyles.border} font-bold tracking-[0.2em] uppercase text-sm mb-4`}
@@ -253,22 +253,6 @@ export default function ProfileCard() {
                 <li>• Quest acceptance criteria</li>
                 <li>• AI analysis breakdown</li>
               </ul>
-            </div>
-          </div>
-
-          {/* Selective disclosure explainer */}
-          <div className="px-6 py-4 border-t border-white/10 bg-white/[0.02]">
-            <div className="flex items-center gap-2 text-[11px] text-white/40">
-              <Zap size={11} className="text-bright-blue" />
-              <span>
-                <span className="text-white/70 font-bold">Prove tier without revealing XP:</span>{" "}
-                Use the{" "}
-                <span className="font-mono text-white/60">prove_rank_range(min, max)</span>{" "}
-                circuit to cryptographically prove you are in the{" "}
-                <span className={`font-bold ${tierStyles.text}`}>{profile.tier}</span>{" "}
-                tier without disclosing your exact XP. Verifiers receive only{" "}
-                <span className="font-mono text-white/60">true</span>.
-              </span>
             </div>
           </div>
         </div>

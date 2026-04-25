@@ -42,7 +42,7 @@ export default function AiAgentsMarketplace() {
             factualAccuracy: 0.35,
             clarity: 0.2,
             originality: 0.1,
-          },
+          } as Record<string, number>,
           steps: [
             "Explain the concept clearly with correct terminology.",
             "Include at least one runnable or verifiable example.",
@@ -70,7 +70,7 @@ export default function AiAgentsMarketplace() {
             factualAccuracy: 0.3,
             clarity: 0.2,
             originality: 0.1,
-          },
+          } as Record<string, number>,
           steps: [
             "Describe the agent objective and constraints clearly.",
             "List tools/data sources used (if any) and why.",
@@ -98,7 +98,7 @@ export default function AiAgentsMarketplace() {
             factualAccuracy: 0.25,
             originality: 0.25,
             technicalDepth: 0.15,
-          },
+          } as Record<string, number>,
           steps: [
             "Avoid fluff; include a concrete claim or takeaway.",
             "Reference evidence (link/screenshot/code snippet) where relevant.",
@@ -126,7 +126,7 @@ export default function AiAgentsMarketplace() {
             maintainability: 0.2,
             security: 0.15,
             clarity: 0.1,
-          },
+          } as Record<string, number>,
           steps: [
             "Summarize what changed and why it matters (1-3 bullets).",
             "Flag correctness issues and edge cases; include file/line references if provided.",
@@ -156,7 +156,7 @@ export default function AiAgentsMarketplace() {
             completeness: 0.3,
             reproducibility: 0.25,
             factualAccuracy: 0.15,
-          },
+          } as Record<string, number>,
           steps: [
             "Check for a clear purpose statement and intended audience.",
             "Verify setup steps are complete: prerequisites, install, config, and run commands.",
@@ -187,7 +187,7 @@ export default function AiAgentsMarketplace() {
             backwardsCompatibility: 0.2,
             clarity: 0.1,
             security: 0.1,
-          },
+          } as Record<string, number>,
           steps: [
             "List the endpoints touched and expected request/response shapes.",
             "Verify status codes and error payloads are consistent and documented.",
@@ -217,7 +217,7 @@ export default function AiAgentsMarketplace() {
             correctness: 0.2,
             errorHandling: 0.15,
             clarity: 0.15,
-          },
+          } as Record<string, number>,
           steps: [
             "Search for secret exposure patterns (tokens, keys, env dumps, debug prints).",
             "Check authentication and authorization: role checks, IDOR, privilege escalation.",
@@ -248,7 +248,7 @@ export default function AiAgentsMarketplace() {
             risk: 0.25,
             completeness: 0.2,
             originality: 0.1,
-          },
+          } as Record<string, number>,
           steps: [
             "Summarize the proposal and success criteria.",
             "Evaluate trade-offs vs at least 2 alternatives.",
