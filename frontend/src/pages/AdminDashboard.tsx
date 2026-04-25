@@ -634,138 +634,193 @@ export default function AdminDashboard() {
         )}
 
         {activeTab === "Rewards" && (
-          <div className="space-y-4">
+          <div className="space-y-3">
             {rewardApprovals.length === 0 ? (
               <div className="border border-white/10 bg-midnight-light p-6 text-white/60 text-sm">
                 No reward approvals yet.
               </div>
             ) : (
-              rewardApprovals.map((item) => (
-                <div
-                  key={item.commitmentId}
-                  className="border border-white/10 bg-midnight-light p-6"
-                >
-                  <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
-                    <div>
-                      <div className="text-xs uppercase tracking-widest text-white/40">
-                        {item.commitmentId}
-                      </div>
-                      <div className="font-mono text-xs text-white/60 mt-1">
-                        Wallet: {item.walletAddress}
-                      </div>
-                    </div>
-                    <div className="flex gap-2 text-[10px] uppercase tracking-widest">
-                      <span className="px-3 py-1 border border-white/20">
-                        {item.verificationStatus}
-                      </span>
-                      <span className="px-3 py-1 border border-bright-blue/30 text-bright-blue">
-                        {item.rewardMode}
-                      </span>
-                    </div>
-                  </div>
+              rewardApprovals.map((item) => {
+                const isExpanded = expandedThinking === item.commitmentId;
+                const reviewLabel = item.reviewPassed ? "Passed" : "Failed";
+                const rewardUnits =
+                  item.rewardMode === "escrow-auto" ? "escrow units" : "XP";
 
-                  <div className="grid md:grid-cols-2 gap-4 text-sm mb-4">
-                    <div>
-                      <div className="text-white/40 uppercase tracking-widest text-[10px] mb-1">
-                        Review
-                      </div>
-                      <div className="text-white/80">
-                        Score {item.reviewScore} · {item.reviewPassed ? "passed" : "failed"}
-                      </div>
-                      <div className="font-mono text-xs text-white/50 break-all mt-1">
-                        {item.artifactUrl}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-white/40 uppercase tracking-widest text-[10px] mb-1">
-                        Reward
-                      </div>
-                      <div className="text-white/80">
-                        {item.rewardAmount}{" "}
-                        {item.rewardMode === "escrow-auto" ? "escrow units" : "XP"}
-                      </div>
-                      <div className="text-xs text-white/50 mt-1">
-                        {item.rewardStatus}
-                      </div>
-                    </div>
-                  </div>
+                return (
+                  <div
+                    key={item.commitmentId}
+                    className="border border-white/10 bg-midnight-light"
+                  >
+                    <div className="p-5">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="text-[10px] uppercase tracking-widest text-white/40">
+                            Commitment
+                          </div>
+                          <div className="font-mono text-xs text-white/70 break-all">
+                            {item.commitmentId}
+                          </div>
+                        </div>
 
-                  {item.reviewThinking && (
-                    <div className="mb-4">
-                      <button
-                        onClick={() =>
-                          setExpandedThinking(
-                            expandedThinking === item.commitmentId
-                              ? null
-                              : item.commitmentId,
-                          )
-                        }
-                        className="text-[10px] uppercase tracking-[0.15em] text-bright-blue font-bold hover:text-bright-blue/80 transition-colors flex items-center gap-1.5"
-                      >
-                        {expandedThinking === item.commitmentId
-                          ? "Hide AI reasoning"
-                          : "View AI reasoning steps"}
-                        <Activity size={10} />
-                      </button>
-                      {expandedThinking === item.commitmentId && (
-                        <div className="mt-2 p-5 bg-[#0A0A0A] border border-white/5 border-l-2 border-l-bright-blue space-y-6">
+                        <div className="flex items-center gap-2">
+                          <span className="px-2.5 py-1 border border-white/20 text-[10px] uppercase tracking-widest text-white/70">
+                            {item.verificationStatus}
+                          </span>
+                          <span className="px-2.5 py-1 border border-bright-blue/30 text-[10px] uppercase tracking-widest text-bright-blue">
+                            {item.rewardMode}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="mt-4 grid gap-3 md:grid-cols-[1.2fr_0.8fr_0.7fr] items-start">
+                        <div className="min-w-0">
+                          <div className="text-[10px] uppercase tracking-widest text-white/40 mb-1">
+                            Wallet
+                          </div>
+                          <div className="font-mono text-xs text-white/60 break-all">
+                            {item.walletAddress}
+                          </div>
+                          <div className="mt-2 text-[10px] uppercase tracking-widest text-white/40 mb-1">
+                            Artifact
+                          </div>
+                          <div className="font-mono text-xs text-white/50 break-all">
+                            {item.artifactUrl}
+                          </div>
+                        </div>
+
+                        <div>
+                          <div className="text-[10px] uppercase tracking-widest text-white/40 mb-1">
+                            Review
+                          </div>
+                          <div className="text-sm text-white/80">
+                            <span className="font-bold">Score {item.reviewScore}</span>{" "}
+                            <span className="text-white/50">·</span>{" "}
+                            <span
+                              className={
+                                item.reviewPassed
+                                  ? "text-emerald-300"
+                                  : "text-amber-300"
+                              }
+                            >
+                              {reviewLabel}
+                            </span>
+                          </div>
+                          <div className="mt-2 text-[10px] uppercase tracking-widest text-white/40 mb-1">
+                            Reward
+                          </div>
+                          <div className="text-sm text-white/80">
+                            <span className="font-bold">
+                              {item.rewardAmount}
+                            </span>{" "}
+                            <span className="text-white/60">{rewardUnits}</span>
+                          </div>
+                          <div className="text-xs text-white/50 mt-1">
+                            {item.rewardStatus}
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col gap-2 md:items-end">
+                          {item.verificationStatus === "pending-admin" ? (
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() =>
+                                  void handleRewardDecision(item, "approved")
+                                }
+                                className="px-4 py-2 bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 text-[10px] font-bold uppercase tracking-widest flex items-center gap-2"
+                              >
+                                <Coins size={14} />
+                                Approve
+                              </button>
+                              <button
+                                onClick={() =>
+                                  void handleRewardDecision(item, "rejected")
+                                }
+                                className="px-4 py-2 bg-red-500/20 border border-red-400/40 text-red-300 text-[10px] font-bold uppercase tracking-widest"
+                              >
+                                Reject
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="text-xs text-white/60 md:text-right">
+                              {item.claimedAt
+                                ? `Claimed at ${formatDate(item.claimedAt)}`
+                                : item.approvedAt
+                                  ? `Approved at ${formatDate(item.approvedAt)}`
+                                  : "Decision recorded"}
+                            </div>
+                          )}
+
+                          {(item.reviewThinking ||
+                            (item.reviewStepResults &&
+                              item.reviewStepResults.length > 0)) && (
+                            <button
+                              onClick={() =>
+                                setExpandedThinking(
+                                  isExpanded ? null : item.commitmentId,
+                                )
+                              }
+                              className="text-[10px] uppercase tracking-[0.15em] text-bright-blue font-bold hover:text-bright-blue/80 transition-colors flex items-center gap-1.5 md:justify-end"
+                            >
+                              {isExpanded ? "Hide details" : "View AI details"}
+                              <Activity size={10} />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {isExpanded && (
+                      <div className="border-t border-white/10 p-5 bg-[#0A0A0A]">
+                        <div className="grid gap-6 lg:grid-cols-2">
                           {item.reviewThinking && (
                             <div>
-                              <div className="text-[10px] text-white/30 uppercase tracking-widest mb-2 font-bold">Analysis Summary</div>
+                              <div className="text-[10px] text-white/30 uppercase tracking-widest mb-2 font-bold">
+                                Analysis summary
+                              </div>
                               <p className="text-sm text-white/70 leading-relaxed italic">
                                 {item.reviewThinking}
                               </p>
                             </div>
                           )}
 
-                          {item.reviewStepResults && item.reviewStepResults.length > 0 && (
-                            <div className="space-y-4">
-                              <div className="text-[10px] text-white/30 uppercase tracking-widest mb-2 font-bold">Audit Steps</div>
-                              {item.reviewStepResults.map((step, idx) => (
-                                <div key={idx} className="bg-white/[0.01] border border-white/5 p-3">
-                                  <div className="flex items-center justify-between mb-1.5">
-                                    <span className="text-[11px] font-bold text-white/80">{step.criterion}</span>
-                                    <span className={`text-[10px] px-1.5 py-0.5 border ${step.passed ? 'border-emerald-500/20 text-emerald-400' : 'border-amber-500/20 text-amber-400'}`}>
-                                      {step.passed ? 'PASS' : 'FAIL'}
-                                    </span>
-                                  </div>
-                                  <p className="text-[11px] text-white/50 leading-relaxed italic">{step.evaluation}</p>
+                          {item.reviewStepResults &&
+                            item.reviewStepResults.length > 0 && (
+                              <div className="space-y-3">
+                                <div className="text-[10px] text-white/30 uppercase tracking-widest mb-2 font-bold">
+                                  Audit steps
                                 </div>
-                              ))}
-                            </div>
-                          )}
+                                {item.reviewStepResults.map((step, idx) => (
+                                  <div
+                                    key={idx}
+                                    className="bg-white/[0.01] border border-white/5 p-3"
+                                  >
+                                    <div className="flex items-center justify-between mb-1.5">
+                                      <span className="text-[11px] font-bold text-white/80">
+                                        {step.criterion}
+                                      </span>
+                                      <span
+                                        className={`text-[10px] px-1.5 py-0.5 border ${
+                                          step.passed
+                                            ? "border-emerald-500/20 text-emerald-400"
+                                            : "border-amber-500/20 text-amber-400"
+                                        }`}
+                                      >
+                                        {step.passed ? "PASS" : "FAIL"}
+                                      </span>
+                                    </div>
+                                    <p className="text-[11px] text-white/50 leading-relaxed italic">
+                                      {step.evaluation}
+                                    </p>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
                         </div>
-                      )}
-                    </div>
-                  )}
-
-                  {item.verificationStatus === "pending-admin" ? (
-                    <div className="flex gap-3">
-                      <button
-                        onClick={() => void handleRewardDecision(item, "approved")}
-                        className="px-4 py-2 bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 text-xs font-bold uppercase tracking-widest flex items-center gap-2"
-                      >
-                        <Coins size={14} />
-                        Approve Reward
-                      </button>
-                      <button
-                        onClick={() => void handleRewardDecision(item, "rejected")}
-                        className="px-4 py-2 bg-red-500/20 border border-red-400/40 text-red-300 text-xs font-bold uppercase tracking-widest"
-                      >
-                        Reject
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="text-xs text-white/60">
-                      {item.claimedAt
-                        ? `Claimed at ${formatDate(item.claimedAt)}`
-                        : item.approvedAt
-                          ? `Approved at ${formatDate(item.approvedAt)}`
-                          : "Decision recorded"}
-                    </div>
-                  )}
-                </div>
-              ))
+                      </div>
+                    )}
+                  </div>
+                );
+              })
             )}
           </div>
         )}

@@ -255,22 +255,6 @@ export default function ProfileCard() {
               </ul>
             </div>
           </div>
-
-          {/* Selective disclosure explainer */}
-          <div className="px-6 py-4 border-t border-white/10 bg-white/[0.02]">
-            <div className="flex items-center gap-2 text-[11px] text-white/40">
-              <Zap size={11} className="text-bright-blue" />
-              <span>
-                <span className="text-white/70 font-bold">Prove tier without revealing XP:</span>{" "}
-                Use the{" "}
-                <span className="font-mono text-white/60">prove_rank_range(min, max)</span>{" "}
-                circuit to cryptographically prove you are in the{" "}
-                <span className={`font-bold ${tierStyles.text}`}>{profile.tier}</span>{" "}
-                tier without disclosing your exact XP. Verifiers receive only{" "}
-                <span className="font-mono text-white/60">true</span>.
-              </span>
-            </div>
-          </div>
         </div>
       </div>
     </div>
