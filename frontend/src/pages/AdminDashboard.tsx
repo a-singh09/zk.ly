@@ -708,8 +708,32 @@ export default function AdminDashboard() {
                         <Activity size={10} />
                       </button>
                       {expandedThinking === item.commitmentId && (
-                        <div className="mt-2 p-4 bg-[#0A0A0A] border border-white/5 text-sm text-white/70 leading-relaxed italic border-l-2 border-l-bright-blue">
-                          {item.reviewThinking}
+                        <div className="mt-2 p-5 bg-[#0A0A0A] border border-white/5 border-l-2 border-l-bright-blue space-y-6">
+                          {item.reviewThinking && (
+                            <div>
+                              <div className="text-[10px] text-white/30 uppercase tracking-widest mb-2 font-bold">Analysis Summary</div>
+                              <p className="text-sm text-white/70 leading-relaxed italic">
+                                {item.reviewThinking}
+                              </p>
+                            </div>
+                          )}
+
+                          {item.reviewStepResults && item.reviewStepResults.length > 0 && (
+                            <div className="space-y-4">
+                              <div className="text-[10px] text-white/30 uppercase tracking-widest mb-2 font-bold">Audit Steps</div>
+                              {item.reviewStepResults.map((step, idx) => (
+                                <div key={idx} className="bg-white/[0.01] border border-white/5 p-3">
+                                  <div className="flex items-center justify-between mb-1.5">
+                                    <span className="text-[11px] font-bold text-white/80">{step.criterion}</span>
+                                    <span className={`text-[10px] px-1.5 py-0.5 border ${step.passed ? 'border-emerald-500/20 text-emerald-400' : 'border-amber-500/20 text-amber-400'}`}>
+                                      {step.passed ? 'PASS' : 'FAIL'}
+                                    </span>
+                                  </div>
+                                  <p className="text-[11px] text-white/50 leading-relaxed italic">{step.evaluation}</p>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -795,8 +819,32 @@ export default function AdminDashboard() {
                         <Activity size={10} />
                       </button>
                       {expandedThinking === item.escalationId && (
-                        <div className="mt-2 p-4 bg-[#0A0A0A] border border-white/5 text-sm text-white/70 leading-relaxed italic border-l-2 border-l-bright-blue">
-                          {item.reviewThinking}
+                        <div className="mt-2 p-5 bg-[#0A0A0A] border border-white/5 border-l-2 border-l-bright-blue space-y-6">
+                          {item.reviewThinking && (
+                            <div>
+                              <div className="text-[10px] text-white/30 uppercase tracking-widest mb-2 font-bold">Original Analysis Summary</div>
+                              <p className="text-sm text-white/70 leading-relaxed italic">
+                                {item.reviewThinking}
+                              </p>
+                            </div>
+                          )}
+
+                          {item.reviewStepResults && item.reviewStepResults.length > 0 && (
+                            <div className="space-y-4">
+                              <div className="text-[10px] text-white/30 uppercase tracking-widest mb-2 font-bold">Original Audit Steps</div>
+                              {item.reviewStepResults.map((step, idx) => (
+                                <div key={idx} className="bg-white/[0.01] border border-white/5 p-3">
+                                  <div className="flex items-center justify-between mb-1.5">
+                                    <span className="text-[11px] font-bold text-white/80">{step.criterion}</span>
+                                    <span className={`text-[10px] px-1.5 py-0.5 border ${step.passed ? 'border-emerald-500/20 text-emerald-400' : 'border-amber-500/20 text-amber-400'}`}>
+                                      {step.passed ? 'PASS' : 'FAIL'}
+                                    </span>
+                                  </div>
+                                  <p className="text-[11px] text-white/50 leading-relaxed italic">{step.evaluation}</p>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>

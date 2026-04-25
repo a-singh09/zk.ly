@@ -31,9 +31,14 @@ interface ScoreResult {
   summary: string;
   analysisMessage: string;
   thinking?: string;
+  stepResults?: {
+    criterion: string;
+    evaluation: string;
+    passed: boolean;
+  }[];
 }
 
-function scoreFromInput(input: ReviewRequest): ScoreResult {
+function scoreFromInput(input: ReviewRequest, steps: string[] = []): ScoreResult {
   const basis = `${input.artifactUrl ?? ""}|${input.artifactText ?? ""}`;
   const digest = createHash("sha256")
     .update(basis || "midnight")
@@ -50,6 +55,20 @@ function scoreFromInput(input: ReviewRequest): ScoreResult {
   );
   const passed = score >= 70;
 
+  const stepResults = steps.map((step, idx) => {
+    const stepDigest = createHash("sha256")
+      .update(`${basis}|${step}|${idx}`)
+      .digest();
+    const stepPassed = (stepDigest[0] % 100) < (passed ? 90 : 45);
+    return {
+      criterion: step,
+      evaluation: stepPassed
+        ? `The submission was analyzed for "${step}" and found to be in high alignment with platform standards. Mock verification confirmed valid structure.`
+        : `The submission's alignment with "${step}" is insufficient. Further detail or more specific technical evidence is required to clear this checkpoint.`,
+      passed: stepPassed,
+    };
+  });
+
   return {
     score,
     breakdown: { accuracy, completeness, originality, relevance },
@@ -62,6 +81,7 @@ function scoreFromInput(input: ReviewRequest): ScoreResult {
     thinking: passed
       ? "The submission was evaluated against the technical rubric. It demonstrated a clear understanding of zero-knowledge concepts and provided well-documented code examples. The structure is logical, and the content is highly relevant to the Midnight ecosystem. All verification checks passed with high confidence."
       : "The submission was evaluated but failed to meet the required threshold. Key technical details regarding proof generation were missing, and the explanation of shielded transactions was too brief. To improve the score, the author should provide more depth in the implementation section and ensure all rubric criteria are addressed.",
+    stepResults,
   };
 }
 
@@ -89,6 +109,7 @@ async function fetchDevToArticle(
 
 async function scoreWithOpenAI(
   article: DevToArticleRaw,
+  steps: string[] = [],
 ): Promise<ScoreResult | null> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) return null;
@@ -100,14 +121,17 @@ async function scoreWithOpenAI(
 
   const prompt = `You are an expert blog post reviewer for a developer quest platform.
 
-Evaluate the following dev.to blog post against this rubric. Return ONLY a JSON object with this exact shape:
+Evaluate the following dev.to blog post against this rubric and the specific policy steps provided below. Return ONLY a JSON object with this exact shape:
 {
   "accuracy": <integer 0-100>,
   "completeness": <integer 0-100>,
   "originality": <integer 0-100>,
   "relevance": <integer 0-100>,
   "summary": "<one sentence summary of the review>",
-  "thinking": "<a detailed paragraph explaining your reasoning, the steps you took to evaluate the post, and specific feedback on why you gave these scores>"
+  "thinking": "<a detailed paragraph explaining your reasoning>",
+  "stepResults": [
+    { "criterion": "step string from list", "evaluation": "short explanation for this step", "passed": <boolean> }
+  ]
 }
 
 Rubric:
@@ -115,6 +139,9 @@ Rubric:
 - completeness (0-100): Does the post cover the topic with sufficient depth?
 - originality (0-100): Does it go beyond paraphrasing docs or copying other posts?
 - relevance (0-100): Is the content relevant to blockchain, ZK proofs, or developer tooling?
+
+Policy Steps to Verify:
+${steps.map((s) => `- ${s}`).join("\n")}
 
 Post metadata:
 Title: ${article.title ?? "N/A"}
@@ -131,7 +158,7 @@ ${body}`;
       model: process.env.OPENAI_REVIEW_MODEL ?? "gpt-4o-mini",
       messages: [{ role: "user", content: prompt }],
       response_format: { type: "json_object" },
-      max_tokens: 512,
+      max_tokens: 1024,
     });
 
     const raw = JSON.parse(response.choices[0]?.message?.content ?? "{}") as {
@@ -141,6 +168,11 @@ ${body}`;
       relevance?: number;
       summary?: string;
       thinking?: string;
+      stepResults?: {
+        criterion: string;
+        evaluation: string;
+        passed: boolean;
+      }[];
     };
 
     const accuracy = Math.min(100, Math.max(0, raw.accuracy ?? 60));
@@ -161,7 +193,10 @@ ${body}`;
           : "AI review did not clear the threshold."),
       analysisMessage:
         "Live AI analysis completed via OpenAI using fetched dev.to article data.",
-      thinking: raw.thinking ?? "AI reasoning was generated but not explicitly returned in the specified format.",
+      thinking:
+        raw.thinking ??
+        "AI reasoning was generated but not explicitly returned in the specified format.",
+      stepResults: raw.stepResults ?? [],
     };
   } catch {
     return null;
@@ -193,7 +228,14 @@ function buildReview(params: {
   reviewMode: ReviewRecord["reviewMode"];
 }): ReviewRecord {
   const { reviewId, spaceId, questId, artifactUrl, artifactText } = params;
-  const { score, breakdown, summary, analysisMessage, thinking } = params.scoring;
+  const {
+    score,
+    breakdown,
+    summary,
+    analysisMessage,
+    thinking,
+    stepResults,
+  } = params.scoring;
   const threshold = params.threshold;
   const passed = score >= threshold;
   const evidenceHash = createHash("sha256")
@@ -217,6 +259,7 @@ function buildReview(params: {
     summary,
     breakdown,
     thinking,
+    stepResults,
     reviewedAt: new Date().toISOString(),
   };
 }
@@ -226,6 +269,7 @@ export async function createReview(
     threshold?: number;
     policyId?: string;
     track?: QuestTrack;
+    steps?: string[];
   },
 ): Promise<ReviewRecord> {
   const reviewId = createId("review");
@@ -234,9 +278,10 @@ export async function createReview(
   const artifactUrl = input.artifactUrl?.trim() || "https://dev.to";
   const artifactText = input.artifactText?.trim();
   const threshold = Number(input.threshold ?? 70);
+  const steps = input.steps ?? [];
 
   const article = await fetchDevToArticle(artifactUrl);
-  const openAiScoring = article ? await scoreWithOpenAI(article) : null;
+  const openAiScoring = article ? await scoreWithOpenAI(article, steps) : null;
 
   if (openAiScoring) {
     return buildReview({
@@ -262,7 +307,7 @@ export async function createReview(
     artifactUrl,
     artifactText,
     threshold,
-    scoring: scoreFromInput({ artifactUrl, artifactText }),
+    scoring: scoreFromInput({ artifactUrl, artifactText }, steps),
     reviewMode: "mock",
   });
 }

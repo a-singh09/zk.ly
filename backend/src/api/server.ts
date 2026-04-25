@@ -54,6 +54,11 @@ function toRewardApprovalRecord(
     score: number;
     passed: boolean;
     thinking?: string;
+    stepResults?: {
+      criterion: string;
+      evaluation: string;
+      passed: boolean;
+    }[];
   },
   commitment: {
     commitmentId: string;
@@ -79,6 +84,7 @@ function toRewardApprovalRecord(
     reviewScore: review.score,
     reviewPassed: review.passed,
     reviewThinking: review.thinking,
+    reviewStepResults: review.stepResults,
     verificationStatus: commitment.verificationStatus,
     rewardStatus: commitment.rewardStatus,
     rewardMode: commitment.rewardMode,
@@ -264,6 +270,7 @@ const server = createServer(async (request, response) => {
         threshold: policy?.scoreThreshold ?? 70,
         policyId: quest?.policyId,
         track: quest?.track,
+        steps: policy?.steps,
       });
       reviews.set(review.reviewId, review);
       sendJson(response, 200, review);

@@ -7,11 +7,6 @@ import {
   Share,
   ExternalLink,
   CheckCircle,
-  AlertCircle,
-  Unlock,
-  Eye,
-  EyeOff,
-  Lock,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import {
@@ -286,15 +281,44 @@ export default function CertExplorer() {
             {claimError && (
               <div className="mt-4 text-sm text-red-300">{claimError}</div>
             )}
-            {showThinking && record?.review?.thinking && (
+            {showThinking && record?.review && (
               <div className="mt-8 p-6 bg-[#0A0A0A] border border-white/10 border-l-4 border-l-bright-blue animate-in fade-in slide-in-from-top-4 duration-300">
-                <h5 className="text-[10px] uppercase tracking-[0.3em] text-bright-blue font-black mb-4 flex items-center gap-2">
+                <h5 className="text-[10px] uppercase tracking-[0.3em] text-bright-blue font-black mb-6 flex items-center gap-2">
                   <ShieldCheck size={14} /> Cryptographic Reasoning Witness
                 </h5>
-                <p className="text-white/80 leading-relaxed text-sm italic font-serif">
-                  "{record.review.thinking}"
-                </p>
-                <div className="mt-6 pt-4 border-t border-white/5 flex items-center justify-between text-[10px] uppercase tracking-widest text-white/30">
+
+                {record.review.thinking && (
+                  <div className="mb-8">
+                    <div className="text-[10px] text-white/40 uppercase tracking-widest mb-3">Summary Analysis</div>
+                    <p className="text-white/80 leading-relaxed text-sm italic font-serif">
+                      "{record.review.thinking}"
+                    </p>
+                  </div>
+                )}
+
+                {record.review.stepResults && record.review.stepResults.length > 0 && (
+                  <div className="space-y-6">
+                    <div className="text-[10px] text-white/40 uppercase tracking-widest mb-4">Detailed Audit Steps</div>
+                    {record.review.stepResults.map((step, idx) => (
+                      <div key={idx} className="bg-white/[0.02] border border-white/5 p-4 relative overflow-hidden group">
+                        <div className={`absolute left-0 top-0 bottom-0 w-1 ${step.passed ? 'bg-emerald-500/50' : 'bg-amber-500/50'}`} />
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-xs font-bold uppercase tracking-wider text-white/90 group-hover:text-bright-blue transition-colors">
+                            {step.criterion}
+                          </span>
+                          <span className={`text-[10px] font-mono px-2 py-0.5 border ${step.passed ? 'border-emerald-500/30 text-emerald-400' : 'border-amber-500/30 text-amber-400'}`}>
+                            {step.passed ? 'COMPLIANT' : 'NON-COMPLIANT'}
+                          </span>
+                        </div>
+                        <p className="text-xs text-white/50 leading-relaxed font-serif italic">
+                          {step.evaluation}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="mt-8 pt-6 border-t border-white/5 flex items-center justify-between text-[10px] uppercase tracking-widest text-white/30">
                   <span>Audited by {resolvedAgent}</span>
                   <span>Review Hash: {record.review.evidenceHash.slice(0, 16)}...</span>
                 </div>

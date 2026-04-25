@@ -640,10 +640,37 @@ export default function QuestClaim() {
                     <div className="border border-white/10 bg-[#0A0A0A] p-4">
                       <div className="text-white/40 uppercase tracking-widest text-[11px] mb-3 flex items-center gap-2">
                         <Sparkles size={12} className="text-bright-blue" />
-                        AI Reasoning & Steps
+                        AI Analysis Summary
                       </div>
                       <div className="text-white/80 leading-relaxed text-xs italic border-l border-white/20 pl-4 py-1">
                         {reviewResult.thinking}
+                      </div>
+                    </div>
+                  )}
+
+                  {reviewResult.stepResults && reviewResult.stepResults.length > 0 && (
+                    <div className="border border-white/10 bg-[#0A0A0A] p-4">
+                      <div className="text-white/40 uppercase tracking-widest text-[11px] mb-4 flex items-center gap-2">
+                        <CheckCircle size={12} className="text-bright-blue" />
+                        Policy-Based Review Steps
+                      </div>
+                      <div className="space-y-4">
+                        {reviewResult.stepResults.map((step, idx) => (
+                          <div key={idx} className="border-l border-white/5 pl-4 relative">
+                            <div className={`absolute -left-[1px] top-0 w-[2px] h-4 ${step.passed ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-[10px] font-bold uppercase tracking-widest text-white/80">
+                                {step.criterion}
+                              </span>
+                              <span className={`text-[10px] font-mono ${step.passed ? 'text-emerald-400' : 'text-amber-400'}`}>
+                                {step.passed ? 'PASSED' : 'FAILED'}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-white/50 leading-relaxed italic">
+                              {step.evaluation}
+                            </p>
+                          </div>
+                        ))}
                       </div>
                     </div>
                   )}

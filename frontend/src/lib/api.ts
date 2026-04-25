@@ -25,6 +25,11 @@ export interface AiReviewResponse {
     relevance: number;
   };
   thinking?: string;
+  stepResults?: {
+    criterion: string;
+    evaluation: string;
+    passed: boolean;
+  }[];
   reviewedAt: string;
 }
 
@@ -124,6 +129,11 @@ export interface EscalationRecord {
   reason: string;
   notes?: string;
   reviewThinking?: string;
+  reviewStepResults?: {
+    criterion: string;
+    evaluation: string;
+    passed: boolean;
+  }[];
   requestedByWallet: string;
   status: EscalationStatus;
   requestedAt: string;
@@ -159,6 +169,11 @@ export interface RewardApprovalRecord {
   reviewScore: number;
   reviewPassed: boolean;
   reviewThinking?: string;
+  reviewStepResults?: {
+    criterion: string;
+    evaluation: string;
+    passed: boolean;
+  }[];
   verificationStatus: "pending-admin" | "approved" | "rejected" | "claimed";
   rewardStatus: "none" | "awaiting-admin" | "claimable" | "claimed" | "rejected";
   rewardMode: RewardMode;

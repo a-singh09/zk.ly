@@ -142,8 +142,8 @@ export default function ProfileCard() {
               </span>
             </div>
             <div className="text-center md:text-left mt-4">
-              <h1 className="text-3xl md:text-5xl font-bold font-mono tracking-tighter mb-4 text-white break-all">
-                {profile.wallet}
+              <h1 className="text-xl font-bold font-mono tracking-tighter mb-4 text-white break-all">
+                {profile.wallet.slice(0, 6)}...{profile.wallet.slice(-4)}
               </h1>
               <div
                 className={`inline-flex items-center gap-3 px-6 py-2 ${tierStyles.bg} ${tierStyles.text} border ${tierStyles.border} font-bold tracking-[0.2em] uppercase text-sm mb-4`}

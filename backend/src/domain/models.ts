@@ -98,6 +98,11 @@ export interface ReviewRecord {
     relevance: number;
   };
   thinking?: string;
+  stepResults?: {
+    criterion: string;
+    evaluation: string;
+    passed: boolean;
+  }[];
   reviewedAt: string;
 }
 
@@ -188,6 +193,11 @@ export interface EscalationRecord {
   reason: string;
   notes?: string;
   reviewThinking?: string;
+  reviewStepResults?: {
+    criterion: string;
+    evaluation: string;
+    passed: boolean;
+  }[];
   requestedByWallet: string;
   status: EscalationStatus;
   requestedAt: string;
@@ -223,6 +233,11 @@ export interface RewardApprovalRecord {
   reviewScore: number;
   reviewPassed: boolean;
   reviewThinking?: string;
+  reviewStepResults?: {
+    criterion: string;
+    evaluation: string;
+    passed: boolean;
+  }[];
   verificationStatus: VerificationStatus;
   rewardStatus: RewardStatus;
   rewardMode: RewardMode;
