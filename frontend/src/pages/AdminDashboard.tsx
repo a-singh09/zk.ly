@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import {
   Activity,
   AlertTriangle,
@@ -8,6 +8,7 @@ import {
   Plus,
   Shield,
   Settings,
+  Store,
 } from "lucide-react";
 import Editor from "react-simple-code-editor";
 import Prism from "prismjs";
@@ -63,6 +64,7 @@ function highlightJson(code: string) {
 }
 
 export default function AdminDashboard() {
+  const location = useLocation();
   const [activeTab, setActiveTab] = useState<(typeof tabs)[number]>("Overview");
   const [spaces, setSpaces] = useState<SpaceRecord[]>([]);
   const [disclosures, setDisclosures] = useState<DisclosureRecord[]>([]);
@@ -156,6 +158,41 @@ export default function AdminDashboard() {
   useEffect(() => {
     void loadAdminData();
   }, []);
+
+  useEffect(() => {
+    const state = (location.state ?? {}) as {
+      activeTab?: (typeof tabs)[number];
+      aiAgentTemplate?: {
+        agentId?: string;
+        model?: string;
+        category?: string;
+        scoreThreshold?: string;
+        maxTokens?: string;
+        timeoutMs?: string;
+        retryLimit?: string;
+        configJson?: string;
+      };
+    };
+
+    if (state.activeTab) {
+      setActiveTab(state.activeTab);
+    }
+    if (state.aiAgentTemplate) {
+      const t = state.aiAgentTemplate;
+      if (typeof t.agentId === "string") setPolicyAgentId(t.agentId);
+      if (typeof t.model === "string") setPolicyModel(t.model);
+      if (typeof t.category === "string") setPolicyCategory(t.category);
+      if (typeof t.scoreThreshold === "string")
+        setPolicyScoreThreshold(t.scoreThreshold);
+      if (typeof t.maxTokens === "string") setPolicyMaxTokens(t.maxTokens);
+      if (typeof t.timeoutMs === "string") setPolicyTimeoutMs(t.timeoutMs);
+      if (typeof t.retryLimit === "string") setPolicyRetryLimit(t.retryLimit);
+      if (typeof t.configJson === "string") setPolicyConfigJson(t.configJson);
+
+      setAdminMessage("Template imported. Review and click Create AI Agent.");
+      window.history.replaceState({}, document.title);
+    }
+  }, [location.state]);
 
   const handleCreateSpace = async () => {
     setAdminError(null);
@@ -497,10 +534,15 @@ export default function AdminDashboard() {
                       <div className="text-xs uppercase tracking-widest text-white/40 mb-2">
                         Reward Approval
                       </div>
-                      <div className="text-sm text-white/80">
-                        {item.rewardAmount}{" "}
-                        {item.rewardMode === "escrow-auto" ? "escrow units" : "XP"} for{" "}
-                        {item.walletAddress}
+                      <div className="text-sm text-white/80 min-w-0">
+                        <span>
+                          {item.rewardAmount}{" "}
+                          {item.rewardMode === "escrow-auto" ? "escrow units" : "XP"}{" "}
+                          for{" "}
+                        </span>
+                        <span className="font-mono text-xs text-white/70 break-all">
+                          {item.walletAddress}
+                        </span>
                       </div>
                     </div>
                   ))}
@@ -748,10 +790,19 @@ export default function AdminDashboard() {
         {activeTab === "AI Agents" && (
           <div className="grid lg:grid-cols-[1.2fr_1fr] gap-6">
             <div className="border border-white/10 bg-midnight-light p-8">
-              <h2 className="text-lg font-bold uppercase tracking-widest mb-6 flex items-center gap-2">
-                <Plus size={16} className="text-bright-blue" />
-                Create AI Agent
-              </h2>
+              <div className="flex items-center justify-between gap-4 mb-6">
+                <h2 className="text-lg font-bold uppercase tracking-widest flex items-center gap-2">
+                  <Plus size={16} className="text-bright-blue" />
+                  Create AI Agent
+                </h2>
+                <Link
+                  to="/admin/ai-agents/marketplace"
+                  className="px-4 py-2 border border-white/20 text-white/70 text-xs font-bold uppercase tracking-widest hover:border-bright-blue hover:text-bright-blue transition-colors flex items-center gap-2"
+                >
+                  <Store size={14} />
+                  Marketplace
+                </Link>
+              </div>
               <div className="grid md:grid-cols-2 gap-4">
                 <input
                   value={policyAgentId}

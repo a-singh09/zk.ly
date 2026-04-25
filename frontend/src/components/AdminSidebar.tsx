@@ -7,6 +7,7 @@ import {
   Loader2,
   LogOut,
   Wallet,
+  Store,
 } from "lucide-react";
 import {
   truncateAddress,
@@ -29,6 +30,11 @@ export default function AdminSidebar() {
       label: "AI Agents",
       icon: <Bot size={22} />,
       path: "/admin/reviewers",
+    },
+    {
+      label: "Marketplace",
+      icon: <Store size={22} />,
+      path: "/admin/ai-agents/marketplace",
     },
   ];
 

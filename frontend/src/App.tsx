@@ -8,6 +8,7 @@ import ProfileCard from "./pages/ProfileCard";
 import Leaderboard from "./pages/Leaderboard";
 import AdminDashboard from "./pages/AdminDashboard";
 import AdminReviewers from "./pages/AdminReviewers";
+import AiAgentsMarketplace from "./pages/AiAgentsMarketplace";
 import SpaceDetail from "./pages/SpaceDetail";
 import QuestManagement from "./pages/QuestManagement";
 import AppLayout from "./components/AppLayout";
@@ -89,6 +90,16 @@ function App() {
                 <AdminGuard>
                   <AdminLayout>
                     <AdminReviewers />
+                  </AdminLayout>
+                </AdminGuard>
+              }
+            />
+            <Route
+              path="/admin/ai-agents/marketplace"
+              element={
+                <AdminGuard>
+                  <AdminLayout>
+                    <AiAgentsMarketplace />
                   </AdminLayout>
                 </AdminGuard>
               }

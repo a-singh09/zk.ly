@@ -486,9 +486,18 @@ export default function QuestManagement() {
               )}
 
               <div>
-                <label className="block text-sm font-bold uppercase tracking-widest text-white/80 mb-3">
-                  AI Agents (Optional)
-                </label>
+                <div className="flex items-center justify-between gap-4 mb-3">
+                  <label className="block text-sm font-bold uppercase tracking-widest text-white/80">
+                    AI Agents (Optional)
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => navigate("/admin/ai-agents/marketplace")}
+                    className="px-3 py-1.5 border border-white/20 text-white/70 text-[10px] font-bold uppercase tracking-widest hover:border-bright-blue hover:text-bright-blue transition-colors"
+                  >
+                    Marketplace
+                  </button>
+                </div>
                 <select
                   value={policyId}
                   onChange={(e) => setPolicyId(e.target.value)}
