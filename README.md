@@ -212,7 +212,5 @@ See `contracts/README.md` for:
 
 ---
 
-## One-liner pitch (demo day)
-
 **“zk.ly replaces Zealy’s trust gap: governed AI reviews your submission, and Midnight issues a ZK certificate proving you met the quality bar—without revealing your identity, raw score, or private criteria.”**
 
