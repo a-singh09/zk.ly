@@ -44,7 +44,7 @@ export default function AdminReviewers() {
       setError(
         toggleError instanceof Error
           ? toggleError.message
-          : "Could not update policy",
+          : "Could not update AI agent",
       );
     }
   };
@@ -57,7 +57,7 @@ export default function AdminReviewers() {
             <Bot className="text-white" size={24} />
           </div>
           <h1 className="font-heading font-black text-3xl uppercase tracking-widest text-white">
-            AI Reviewer Policies
+            AI Agents
           </h1>
         </div>
         <button
@@ -78,10 +78,10 @@ export default function AdminReviewers() {
         <div className="bg-[#161616] border border-white/10 overflow-x-auto">
           <div className="flex items-center justify-between p-8 border-b border-white/10 bg-[#0A0A0A]">
             <h2 className="text-xl font-heading font-bold uppercase tracking-widest">
-              Registered Reviewer Agents
+              Registered AI Agents
             </h2>
             <div className="text-xs uppercase tracking-widest text-white/40">
-              {loading ? "Loading..." : `${policies.length} policies`}
+              {loading ? "Loading..." : `${policies.length} agents`}
             </div>
           </div>
 
@@ -139,10 +139,9 @@ export default function AdminReviewers() {
             <Shield className="text-bright-blue" size={20} /> Operational Note
           </h3>
           <p className="text-white/60 text-sm leading-relaxed">
-            These reviewer policies are stored in a demo in-memory backend to
-            unblock frontend and admin workflows. They are structured to map
-            directly to persistent storage and on-chain policy commitments in
-            the next phase.
+          These AI agents are stored in a demo in-memory backend to unblock
+          workflows. They are structured to map directly to persistent storage
+          in the next phase.
           </p>
         </div>
       </div>

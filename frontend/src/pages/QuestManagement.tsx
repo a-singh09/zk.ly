@@ -1,9 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, Loader2, CheckCircle2, AlertTriangle } from "lucide-react";
-import Editor from "react-simple-code-editor";
-import Prism from "prismjs";
-import "prismjs/components/prism-json";
 import {
   getReviewerPolicies,
   createQuest,
@@ -19,13 +16,6 @@ import {
   type QuestRewardMode,
 } from "../lib/questContractApi";
 import { createQuestOnChain } from "../lib/midnightConnectorExecutor";
-
-const CodeEditor =
-  (Editor as typeof Editor & { default?: typeof Editor }).default ?? Editor;
-
-function highlightJson(code: string) {
-  return Prism.highlight(code, Prism.languages.json, "json");
-}
 
 export default function QuestManagement() {
   const { spaceId, questId } = useParams<{
@@ -273,8 +263,8 @@ export default function QuestManagement() {
 
         setSuccess(
           onChainQuestId
-            ? `Quest registered on Midnight chain (ID: ${onChainQuestId.slice(0, 12)}…) and saved.`
-            : "Quest saved. Connect Midnight Lace wallet to publish on-chain.",
+            ? `Quest created (ID: ${onChainQuestId.slice(0, 12)}…).`
+            : "Quest created.",
         );
 
         setName("");
@@ -340,7 +330,7 @@ export default function QuestManagement() {
           </h1>
           <p className="text-white/60">
             {isEditing
-              ? "Update the quest details and policies below"
+              ? "Update the quest details and AI agents below"
               : "Add a new quest to this space"}
           </p>
         </div>
@@ -359,38 +349,7 @@ export default function QuestManagement() {
           </div>
         )}
 
-        {/* On-chain registration status banner */}
-        {!isEditing && (
-          <div
-            className={`mb-6 flex gap-3 border p-4 rounded text-sm ${
-              connectedWalletApi
-                ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
-                : "border-amber-500/30 bg-amber-500/10 text-amber-200"
-            }`}
-          >
-            <span className="flex-shrink-0 mt-0.5">
-              {connectedWalletApi ? "⛓" : "⚠"}
-            </span>
-            <p>
-              {connectedWalletApi ? (
-                <>
-                  <strong>Midnight Lace connected.</strong> Quest will be
-                  registered on the{" "}
-                  <span className="font-mono text-xs">
-                    quest-registry
-                  </span>{" "}
-                  contract via your wallet when you submit.
-                </>
-              ) : (
-                <>
-                  <strong>Midnight Lace not connected.</strong> Quest will be
-                  saved off-chain only. Connect your wallet via the top bar to
-                  enable on-chain registration.
-                </>
-              )}
-            </p>
-          </div>
-        )}
+        {/* Intentionally keep UI minimal here; no extra infra details */}
 
         <form onSubmit={handleSubmit} className="space-y-8">
           <div className="border border-white/10 bg-[#161616] p-8">
@@ -527,70 +486,18 @@ export default function QuestManagement() {
               )}
 
               <div>
-                <div className="flex items-center justify-between mb-3">
-                  <label className="block text-sm font-bold uppercase tracking-widest text-white/80">
-                    Criteria JSON
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setCriteriaJson(
-                        JSON.stringify(
-                          {
-                            technicalDepth: 0.4,
-                            factualAccuracy: 0.3,
-                            clarity: 0.2,
-                            originality: 0.1,
-                            steps: [
-                              "It should explain shielded transactions clearly",
-                              "It should be clearly documented with working examples",
-                            ],
-                          },
-                          null,
-                          2,
-                        ),
-                      )
-                    }
-                    className="text-[10px] px-2 py-1 border border-white/20 hover:border-bright-blue hover:text-bright-blue transition-colors"
-                  >
-                    Reset Template
-                  </button>
-                </div>
-                <div className="border border-white/10 bg-[#0A0A0A]">
-                  <div className="px-3 py-1.5 border-b border-white/10 text-[10px] uppercase tracking-widest text-white/30 font-mono">
-                    criteria.json — stored in Midnight private state, commitment
-                    hash on-chain
-                  </div>
-                  <CodeEditor
-                    value={criteriaJson}
-                    onValueChange={(code) => setCriteriaJson(code)}
-                    highlight={highlightJson}
-                    padding={12}
-                    textareaClassName="admin-json-editor-textarea"
-                    className="admin-json-editor min-h-[180px] text-xs font-mono"
-                  />
-                  <div className="px-3 py-2 border-t border-white/10 text-[10px] text-white/30">
-                    <span className="text-white/50">Weights</span>:
-                    technicalDepth, factualAccuracy, clarity, originality (must
-                    sum to 1.0) ·<span className="text-white/50"> steps</span>:
-                    string array of acceptance requirements
-                  </div>
-                </div>
-              </div>
-
-              <div>
                 <label className="block text-sm font-bold uppercase tracking-widest text-white/80 mb-3">
-                  Review Policy (Optional)
+                  AI Agents (Optional)
                 </label>
                 <select
                   value={policyId}
                   onChange={(e) => setPolicyId(e.target.value)}
                   className="w-full bg-[#0A0A0A] border border-white/10 p-4 outline-none focus:border-bright-blue text-white transition-colors"
                 >
-                  <option value="">None - Manual Review</option>
-                  {policies.map((policy) => (
-                    <option key={policy.id} value={policy.id}>
-                      {policy.agentId} ({policy.category})
+                  <option value="">None</option>
+                  {policies.map((aiAgent) => (
+                    <option key={aiAgent.id} value={aiAgent.id}>
+                      {aiAgent.agentId} ({aiAgent.category})
                     </option>
                   ))}
                 </select>

@@ -26,7 +26,7 @@ export default function AdminSidebar() {
   const adminItems = [
     { label: "Creator Console", icon: <Settings size={22} />, path: "/admin" },
     {
-      label: "AI Review Policy",
+      label: "AI Agents",
       icon: <Bot size={22} />,
       path: "/admin/reviewers",
     },

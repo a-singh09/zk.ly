@@ -189,28 +189,16 @@ export default function CertExplorer() {
             </div>
 
             <div className="bg-[#0A0A0A] p-8 border border-white/10">
-              {/* ZK Proof mode badge */}
+              {/* Status badge (kept intentionally minimal) */}
               {record && (
-                <div
-                  className={`mb-6 border px-4 py-3 text-xs flex items-start gap-3 ${
-                    record.proofMode === "midnight"
-                      ? "border-emerald-500/40 bg-emerald-500/5 text-emerald-200"
-                      : "border-amber-400/30 bg-amber-500/5 text-amber-200"
-                  }`}
-                >
-                  {record.proofMode === "midnight" ? (
-                    <CheckCircle size={14} className="text-emerald-400 mt-0.5 shrink-0" />
-                  ) : (
-                    <AlertCircle size={14} className="text-amber-400 mt-0.5 shrink-0" />
-                  )}
+                <div className="mb-6 border px-4 py-3 text-xs flex items-start gap-3 border-white/10 bg-white/5 text-white/70">
+                  <CheckCircle size={14} className="text-emerald-400 mt-0.5 shrink-0" />
                   <div>
                     <div className="font-bold uppercase tracking-widest text-[10px] mb-1">
-                      {record.proofMode === "midnight"
-                        ? "ZK Proof — Midnight Network"
-                        : "Local Commitment — Fallback Mode"}
+                      Status
                     </div>
                     <div className="text-white/60 text-[10px] leading-4">
-                      {record.chainNote}
+                      {record.verificationStatus}
                     </div>
                   </div>
                 </div>
@@ -260,66 +248,16 @@ export default function CertExplorer() {
             </div>
           </div>
 
-          {/* ZK Privacy Model Split */}
-          <div className="border border-white/10 bg-[#0A0A0A] mb-10">
-            <div className="px-6 py-4 border-b border-white/10 flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-white/60">
-              <Lock size={14} />
-              ZK Privacy Model
-            </div>
-            <div className="grid md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-white/5">
-              <div className="p-5">
-                <div className="flex items-center gap-2 text-emerald-400 mb-3 text-[10px] font-bold uppercase tracking-widest">
-                  <Unlock size={10} /> Public on-chain
-                </div>
-                <ul className="space-y-1 text-xs text-white/60">
-                  <li>• quest_id: <span className="font-mono text-white/80">{record?.review?.questId ?? "—"}</span></li>
-                  <li>• xp_awarded: <span className="font-mono text-white/80">{resolvedXp}</span></li>
-                  <li>• status: <span className="font-mono text-emerald-300">{record?.verificationStatus ?? "PENDING_ADMIN"}</span></li>
-                  <li>• completer_key (pseudonymous hash)</li>
-                </ul>
-              </div>
-              <div className="p-5">
-                <div className="flex items-center gap-2 text-blue-400 mb-3 text-[10px] font-bold uppercase tracking-widest">
-                  <Eye size={10} /> Selectively disclosed
-                </div>
-                <ul className="space-y-1 text-xs text-white/60">
-                  {record?.disclosure && (
-                    <>
-                      <li>• passed_flag: <span className={`font-mono ${record.disclosure.disclosed.passed ? "text-emerald-300" : "text-amber-300"}`}>{String(record.disclosure.disclosed.passed)}</span></li>
-                      <li>• score_band: <span className="font-mono text-white/80">{record.disclosure.disclosed.scoreBand}</span></li>
-                    </>
-                  )}
-                  <li>• evidence_class: <span className="font-mono text-white/80">AI_SCORE</span></li>
-                </ul>
-              </div>
-              <div className="p-5">
-                <div className="flex items-center gap-2 text-white/30 mb-3 text-[10px] font-bold uppercase tracking-widest">
-                  <EyeOff size={10} /> ZK private (never on-chain)
-                </div>
-                <ul className="space-y-1 text-xs text-white/50">
-                  <li>• Raw AI score ({record?.review?.score ?? "—"})</li>
-                  <li>• Full analysis text</li>
-                  <li>• Raw wallet address</li>
-                  <li>• Quest criteria bytes</li>
-                </ul>
-              </div>
-            </div>
-            {record?.commitmentHash && (
-              <div className="px-6 py-3 border-t border-white/10 font-mono text-[10px] text-white/40 flex items-start gap-2 break-all">
-                <span className="text-white/30 shrink-0">commitment_hash:</span>
-                {record.commitmentHash}
-              </div>
-            )}
-          </div>
+          {/* Intentionally hide privacy/infra explanation panels */}
 
           <div className="bg-[#0000FE]/5 border border-bright-blue/20 p-8">
             <div className="flex flex-col md:flex-row justify-between md:items-center gap-8">
               <div>
                 <h4 className="font-bold text-white mb-3 uppercase tracking-widest text-lg">
-                  AI-Governed Review Policy
+                  AI Agents Review
                 </h4>
                 <p className="text-white/60 leading-relaxed max-w-xl text-sm">
-                  Evaluated by explicitly recorded on-chain agent:{" "}
+                  Evaluated by AI agent:{" "}
                   <span className="text-white font-mono bg-[#0A0A0A] px-2 py-1 ml-2 border border-white/10">
                     {resolvedAgent}
                   </span>
