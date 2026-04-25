@@ -23,8 +23,7 @@ type AgentTemplate = {
 export default function AiAgentsMarketplace() {
   const navigate = useNavigate();
 
-  const templates = useMemo<AgentTemplate[]>(
-    () => [
+  const templates = useMemo((): AgentTemplate[] => [
       {
         id: "web3-writing-pack-v1",
         title: "Web3 Writing Pack",
