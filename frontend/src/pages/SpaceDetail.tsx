@@ -233,37 +233,16 @@ export default function SpaceDetail() {
                       </span>
                       {quest.onChainQuestId && (
                         <span className="border border-white/10 px-3 py-1 bg-[#0A0A0A] text-white/80">
-                          On-Chain ID:{" "}
+                          ID:{" "}
                           <span className="font-mono">
                             {quest.onChainQuestId}
                           </span>
                         </span>
                       )}
-                      <span
-                        className={`border px-3 py-1 ${
-                          quest.onChainMode === "midnight"
-                            ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
-                            : quest.onChainMode === "wallet-popup"
-                              ? "border-blue-500/30 bg-blue-500/10 text-blue-200"
-                              : "border-amber-500/30 bg-amber-500/10 text-amber-300"
-                        }`}
-                      >
-                        Chain:{" "}
-                        {quest.onChainMode === "midnight"
-                          ? "Midnight"
-                          : quest.onChainMode === "wallet-popup"
-                            ? "Wallet Popup Authorized"
-                            : "Local Fallback"}
-                      </span>
-                      {quest.onChainMode !== "midnight" &&
-                        quest.onChainReason && (
-                          <span className="border border-amber-400/20 px-3 py-1 bg-amber-500/5 text-amber-200 max-w-full break-all">
-                            {quest.onChainReason}
-                          </span>
-                        )}
+                      {/* Intentionally hide infra/runtime details */}
                       {quest.policyId && (
                         <span className="border border-bright-blue/30 px-3 py-1 bg-bright-blue/10 text-bright-blue">
-                          Policy:{" "}
+                          AI agents:{" "}
                           <span className="font-mono">{quest.policyId}</span>
                         </span>
                       )}
@@ -284,7 +263,7 @@ export default function SpaceDetail() {
                         onClick={() => handlePublishQuest(quest.id)}
                         disabled={publishing === quest.id}
                         className="px-3 border border-emerald-500/40 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-xs font-bold uppercase tracking-widest"
-                        title="Publish quest to Midnight"
+                        title="Publish quest"
                       >
                         {publishing === quest.id ? "Publishing..." : "Publish"}
                       </button>
