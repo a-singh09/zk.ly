@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
 import {
   ArrowLeft,
+  ChevronDown,
   FileCheck,
-  ShieldCheck,
   Sparkles,
   Wallet,
   Lock,
@@ -172,6 +172,42 @@ export default function QuestClaim() {
 
   // Determine current step
   const currentStep = commitmentResult ? 3 : reviewResult ? 2 : article ? 1 : 0;
+  const questLabel = questId ?? "blog-quest-demo";
+
+  type UiStepStatus = "pending" | "active" | "done";
+  type AiUiStep = { id: string; label: string; detail?: string; status: UiStepStatus };
+
+  const aiBaseSteps = useMemo<AiUiStep[]>(
+    () => [
+      { id: "prepare", label: "Prepare inputs", status: "pending" },
+      { id: "policy", label: "Load policy", status: "pending" },
+      { id: "audit", label: "Run audit steps", status: "pending" },
+      { id: "evidence", label: "Validate evidence hash", status: "pending" },
+      { id: "score", label: "Compute score", status: "pending" },
+      { id: "finalize", label: "Finalize verdict", status: "pending" },
+    ],
+    [],
+  );
+
+  const [aiUiSteps, setAiUiSteps] = useState<AiUiStep[]>(aiBaseSteps);
+  const [revealStepCount, setRevealStepCount] = useState(0);
+  const [revealSummary, setRevealSummary] = useState(false);
+  const stepRunRef = useRef(0);
+
+  const setStepStatus = (
+    stepId: string,
+    status: UiStepStatus,
+    detail?: string,
+  ) => {
+    setAiUiSteps((previous) =>
+      previous.map((s) =>
+        s.id === stepId ? { ...s, status, detail } : s,
+      ),
+    );
+  };
+
+  const sleep = (ms: number) =>
+    new Promise<void>((resolve) => window.setTimeout(resolve, ms));
 
   useEffect(() => {
     getMidnightHealth()
@@ -208,23 +244,67 @@ export default function QuestClaim() {
     setCommitmentResult(null);
     setEscalationResult(null);
     setIsReviewing(true);
+    setReviewResult(null);
+    setRevealStepCount(0);
+    setRevealSummary(false);
+    setAiUiSteps(aiBaseSteps);
+
+    const runId = (stepRunRef.current += 1);
     try {
+      setStepStatus("prepare", "active");
+      await sleep(450);
+      if (stepRunRef.current !== runId) return;
+      setStepStatus("prepare", "done");
+
+      setStepStatus("policy", "active");
+      await sleep(600);
+      if (stepRunRef.current !== runId) return;
+      setStepStatus("policy", "done");
+
+      setStepStatus("audit", "active");
+
       const review = await runAiReview({
         spaceId: id,
-        questId: questId ?? "blog-quest-demo",
+        questId: questLabel,
         artifactUrl,
         artifactText: artifactText || undefined,
       });
+
+      if (stepRunRef.current !== runId) return;
+      setStepStatus("audit", "done");
+
+      setStepStatus("evidence", "active");
+      await sleep(450);
+      if (stepRunRef.current !== runId) return;
+      setStepStatus("evidence", "done");
+
+      setStepStatus("score", "active");
+      await sleep(450);
+      if (stepRunRef.current !== runId) return;
+      setStepStatus("score", "done");
+
+      setStepStatus("finalize", "active");
+
+      const stepResultsCount = Math.max(0, review.stepResults?.length ?? 0);
+      for (let i = 0; i < stepResultsCount; i += 1) {
+        await sleep(350);
+        if (stepRunRef.current !== runId) return;
+        setRevealStepCount(i + 1);
+      }
+
+      await sleep(500);
+      if (stepRunRef.current !== runId) return;
+      setRevealSummary(true);
+      setStepStatus("finalize", "done");
+
       setReviewResult(review);
-      notifyComplete(
-        "AI review completed.",
-      );
+      notifyComplete("AI review completed.");
     } catch (reviewError) {
       setError(
         reviewError instanceof Error ? reviewError.message : "Review failed",
       );
     } finally {
-      setIsReviewing(false);
+      if (stepRunRef.current === runId) setIsReviewing(false);
     }
   };
 
@@ -423,175 +503,230 @@ export default function QuestClaim() {
 
         <div className="grid gap-8 lg:grid-cols-[1.3fr_0.9fr]">
           {/* ── Left: Submission Panel ── */}
-          <div className="bg-[#161616] border border-white/10 p-10">
-            <div className="w-20 h-20 bg-[#0A0A0A] border border-white/10 flex items-center justify-center mb-10">
-              <Sparkles className="text-bright-blue" size={38} />
-            </div>
-
-            <p className="text-xs uppercase tracking-[0.3em] text-white/40 mb-4">
-              Quest {questId ?? "blog-quest-demo"}
-            </p>
-            <h1 className="text-4xl font-bold font-heading mb-6 uppercase tracking-tight">
-              Submit for Review
-            </h1>
-            <p className="text-white/60 mb-8 text-lg max-w-2xl">
-              Submit your artifact, run the AI agents review, then confirm the
-              commitment step.
-            </p>
-
-            {/* Artifact URL */}
-            <div className="space-y-5 mb-8">
-              <div>
-                <label className="block text-sm font-bold tracking-widest uppercase text-white/50 mb-4">
-                  Artifact URL
-                </label>
-                <input
-                  value={artifactUrl}
-                  onChange={(event) => setArtifactUrl(event.target.value)}
-                  type="text"
-                  placeholder="https://dev.to/user/my-post"
-                  className="w-full bg-[#0A0A0A] border border-white/20 px-6 py-4 outline-none focus:border-bright-blue focus:ring-1 focus:ring-bright-blue transition-all font-mono text-white"
-                />
-                <div className="mt-4">
-                  <button
-                    onClick={handleFetchArticle}
-                    disabled={isFetchingArticle}
-                    className="px-5 py-3 border border-white/20 text-xs font-bold uppercase tracking-widest hover:border-bright-blue hover:text-bright-blue transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-                  >
-                    {isFetchingArticle
-                      ? "Fetching dev.to article..."
-                      : "Fetch dev.to details"}
-                  </button>
-                </div>
-              </div>
-
-              {article && (
-                <div className="border border-white/10 bg-[#0A0A0A] p-5 text-sm">
-                  <div className="text-white/40 uppercase tracking-widest text-[11px] mb-2 flex items-center gap-2">
-                    <CheckCircle size={12} className="text-emerald-400" />
-                    Live dev.to article — verified
-                  </div>
-                  <h3 className="text-white font-bold text-base mb-2">
-                    {article.title}
-                  </h3>
-                  <p className="text-white/60 mb-3 leading-6">
-                    {article.description || "No description available."}
-                  </p>
-                  <div className="text-white/50 font-mono text-xs break-all">
-                    @{article.user.username} · {article.readable_publish_date}
-                  </div>
-                </div>
-              )}
-
-              <div>
-                <label className="block text-sm font-bold tracking-widest uppercase text-white/50 mb-4">
-                  Optional Artifact Text
-                </label>
-                <textarea
-                  value={artifactText}
-                  onChange={(event) => setArtifactText(event.target.value)}
-                  rows={6}
-                  placeholder="Paste the blog excerpt, transcript, or supporting notes used by the AI reviewer."
-                  className="w-full bg-[#0A0A0A] border border-white/20 px-6 py-4 outline-none focus:border-bright-blue focus:ring-1 focus:ring-bright-blue transition-all font-mono text-white resize-none"
-                />
-              </div>
-            </div>
-
-            {error && (
-              <div className="mb-6 border border-red-500/30 bg-red-500/10 text-red-200 px-5 py-4 text-sm">
-                {error}
-              </div>
-            )}
-
-            {/* Action buttons */}
-            <div className="flex flex-col sm:flex-row gap-4">
-              <button
-                onClick={handleReview}
-                disabled={isReviewing || isFetchingArticle}
-                className="px-8 py-4 bg-bright-blue text-white font-bold tracking-widest uppercase hover:bg-[#0000FE]/90 transition-colors border border-bright-blue disabled:opacity-70 disabled:cursor-not-allowed"
-              >
-                {isReviewing ? "Running AI Review…" : "Run AI Review"}
-              </button>
-
-              <button
-                onClick={handleAuthorizeCommitment}
-                disabled={!reviewResult || isAuthorizing}
-                className="px-8 py-4 border border-white/20 text-white font-bold tracking-widest uppercase hover:border-bright-blue hover:text-bright-blue transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              >
-                <Wallet size={16} />
-                {isAuthorizing
-                  ? "Generating ZK Proof…"
-                  : isConnected
-                    ? "Make Commitment"
-                    : "Connect + Commit"}
-              </button>
-
-              {reviewResult && !reviewResult.passed && (
-                <button
-                  onClick={handleEscalateToAdmin}
-                  disabled={isEscalating || !escalationReason.trim()}
-                  className="px-8 py-4 border border-amber-400/40 text-amber-300 font-bold tracking-widest uppercase hover:border-amber-300 hover:text-amber-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {isEscalating ? "Escalating…" : "Escalate to Admin"}
-                </button>
-              )}
-            </div>
-
-            {/* Escalation reason input */}
-            {reviewResult && !reviewResult.passed && (
-              <div className="mt-6 border border-amber-400/20 bg-amber-500/5 p-5">
-                <label className="block text-sm font-bold tracking-widest uppercase text-amber-200 mb-3">
-                  Escalation Reason
-                </label>
-                <textarea
-                  value={escalationReason}
-                  onChange={(event) => setEscalationReason(event.target.value)}
-                  rows={3}
-                  className="w-full bg-[#0A0A0A] border border-amber-400/30 px-4 py-3 outline-none focus:border-amber-300 font-mono text-amber-100 resize-none"
-                  placeholder="Why should this submission be accepted despite AI score?"
-                />
-              </div>
-            )}
-
-            {escalationResult && (
-              <div className="mt-6 border border-emerald-500/30 bg-emerald-500/10 text-emerald-200 px-5 py-4 text-sm">
-                Escalation submitted: {escalationResult.escalationId}. Status:{" "}
-                {escalationResult.status}
-              </div>
-            )}
-          </div>
-
-          {/* ── Right: Status Panels ── */}
           <div className="space-y-6">
-            {/* Wallet Status */}
-            <div className="bg-[#161616] border border-white/10 p-8">
-              <div className="flex items-center gap-3 mb-5 text-bright-blue">
-                <ShieldCheck size={22} />
-                <h2 className="text-lg font-bold uppercase tracking-widest">
-                  Wallet Status
-                </h2>
+            <div className="bg-[#161616] border border-white/10 p-10">
+              <div className="w-20 h-20 bg-[#0A0A0A] border border-white/10 flex items-center justify-center mb-10">
+                <Sparkles className="text-bright-blue" size={38} />
               </div>
-              <p className="text-white/60 text-sm leading-7">
-                Your wallet can be used to authorize the commitment step. Your
-                signing key never leaves your device.
+
+              <p className="text-xs uppercase tracking-[0.3em] text-white/40 mb-4">
+                Quest {questLabel}
               </p>
-              <div className="mt-5 border border-white/10 bg-[#0A0A0A] p-4 text-sm font-mono text-white/80 break-all">
-                {isConnected ? walletAddress : "Wallet not connected yet"}
+              <h1 className="text-4xl font-bold font-heading mb-6 uppercase tracking-tight">
+                Submit for Review
+              </h1>
+              <p className="text-white/60 mb-8 text-lg max-w-2xl">
+                Submit your artifact, run the AI agents review, then confirm the
+                commitment step.
+              </p>
+
+              {/* Artifact URL */}
+              <div className="space-y-5 mb-8">
+                <div>
+                  <label className="block text-sm font-bold tracking-widest uppercase text-white/50 mb-4">
+                    Artifact URL
+                  </label>
+                  <input
+                    value={artifactUrl}
+                    onChange={(event) => setArtifactUrl(event.target.value)}
+                    type="text"
+                    placeholder="https://dev.to/user/my-post"
+                    className="w-full bg-[#0A0A0A] border border-white/20 px-6 py-4 outline-none focus:border-bright-blue focus:ring-1 focus:ring-bright-blue transition-all font-mono text-white"
+                  />
+                  <div className="mt-4">
+                    <button
+                      onClick={handleFetchArticle}
+                      disabled={isFetchingArticle}
+                      className="px-5 py-3 border border-white/20 text-xs font-bold uppercase tracking-widest hover:border-bright-blue hover:text-bright-blue transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                      {isFetchingArticle
+                        ? "Fetching dev.to article..."
+                        : "Fetch dev.to details"}
+                    </button>
+                  </div>
+                </div>
+
+                {article && (
+                  <div className="border border-white/10 bg-[#0A0A0A] p-5 text-sm">
+                    <div className="text-white/40 uppercase tracking-widest text-[11px] mb-2 flex items-center gap-2">
+                      <CheckCircle size={12} className="text-emerald-400" />
+                      Live dev.to article — verified
+                    </div>
+                    <h3 className="text-white font-bold text-base mb-2">
+                      {article.title}
+                    </h3>
+                    <p className="text-white/60 mb-3 leading-6">
+                      {article.description || "No description available."}
+                    </p>
+                    <div className="text-white/50 font-mono text-xs break-all">
+                      @{article.user.username} · {article.readable_publish_date}
+                    </div>
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-sm font-bold tracking-widest uppercase text-white/50 mb-4">
+                    Optional Artifact Text
+                  </label>
+                  <textarea
+                    value={artifactText}
+                    onChange={(event) => setArtifactText(event.target.value)}
+                    rows={6}
+                    placeholder="Paste the blog excerpt, transcript, or supporting notes used by the AI reviewer."
+                    className="w-full bg-[#0A0A0A] border border-white/20 px-6 py-4 outline-none focus:border-bright-blue focus:ring-1 focus:ring-bright-blue transition-all font-mono text-white resize-none"
+                  />
+                </div>
               </div>
+
+              {error && (
+                <div className="mb-6 border border-red-500/30 bg-red-500/10 text-red-200 px-5 py-4 text-sm">
+                  {error}
+                </div>
+              )}
+
+              {/* Action buttons */}
+              <div className="flex flex-col sm:flex-row gap-4">
+                <button
+                  onClick={handleReview}
+                  disabled={isReviewing || isFetchingArticle}
+                  className="px-8 py-4 bg-bright-blue text-white font-bold tracking-widest uppercase hover:bg-[#0000FE]/90 transition-colors border border-bright-blue disabled:opacity-70 disabled:cursor-not-allowed"
+                >
+                  {isReviewing ? "Running AI Review…" : "Run AI Review"}
+                </button>
+
+                <button
+                  onClick={handleAuthorizeCommitment}
+                  disabled={!reviewResult || isAuthorizing}
+                  className="px-8 py-4 border border-white/20 text-white font-bold tracking-widest uppercase hover:border-bright-blue hover:text-bright-blue transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  <Wallet size={16} />
+                  {isAuthorizing
+                    ? "Generating ZK Proof…"
+                    : isConnected
+                      ? "Make Commitment"
+                      : "Connect + Commit"}
+                </button>
+
+                {reviewResult && !reviewResult.passed && (
+                  <button
+                    onClick={handleEscalateToAdmin}
+                    disabled={isEscalating || !escalationReason.trim()}
+                    className="px-8 py-4 border border-amber-400/40 text-amber-300 font-bold tracking-widest uppercase hover:border-amber-300 hover:text-amber-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isEscalating ? "Escalating…" : "Escalate to Admin"}
+                  </button>
+                )}
+              </div>
+
+              {/* Escalation reason input */}
+              {reviewResult && !reviewResult.passed && (
+                <div className="mt-6 border border-amber-400/20 bg-amber-500/5 p-5">
+                  <label className="block text-sm font-bold tracking-widest uppercase text-amber-200 mb-3">
+                    Escalation Reason
+                  </label>
+                  <textarea
+                    value={escalationReason}
+                    onChange={(event) => setEscalationReason(event.target.value)}
+                    rows={3}
+                    className="w-full bg-[#0A0A0A] border border-amber-400/30 px-4 py-3 outline-none focus:border-amber-300 font-mono text-amber-100 resize-none"
+                    placeholder="Why should this submission be accepted despite AI score?"
+                  />
+                </div>
+              )}
+
+              {escalationResult && (
+                <div className="mt-6 border border-emerald-500/30 bg-emerald-500/10 text-emerald-200 px-5 py-4 text-sm">
+                  Escalation submitted: {escalationResult.escalationId}. Status:{" "}
+                  {escalationResult.status}
+                </div>
+              )}
             </div>
 
-            {/* Review Result */}
+            {/* AI Review Activity + Results (main flow) */}
             <div className="bg-[#161616] border border-white/10 p-8">
-              <div className="flex items-center gap-3 mb-5 text-bright-blue">
-                <FileCheck size={22} />
-                <h2 className="text-lg font-bold uppercase tracking-widest">
-                  Review Result
-                </h2>
+              <div className="flex items-center justify-between gap-4 mb-5">
+                <div className="flex items-center gap-3 text-bright-blue">
+                  <FileCheck size={20} />
+                  <h2 className="text-lg font-bold uppercase tracking-widest">
+                    AI Review
+                  </h2>
+                </div>
+                <div className="text-[10px] uppercase tracking-widest text-white/30 flex items-center gap-1">
+                  <Circle size={8} />
+                  Private scoring — only pass/fail is committed on-chain
+                </div>
               </div>
 
-              {reviewResult ? (
-                <div className="space-y-4 text-sm">
-                  <div className="grid grid-cols-2 gap-4">
+              {!reviewResult ? (
+                <div className="text-sm text-white/60 leading-7">
+                  <p>
+                    Run the review to see the verdict, a short explanation, and
+                    the audit steps used by the policy.
+                  </p>
+                  {isReviewing && (
+                    <div className="mt-6 border border-white/10 bg-[#0A0A0A] p-5">
+                      <div className="text-[10px] uppercase tracking-widest text-white/40 mb-3 flex items-center gap-2">
+                        <Sparkles size={12} className="text-bright-blue" />
+                        Auditing submission…
+                      </div>
+                      <div className="space-y-2 text-xs text-white/60">
+                        {aiUiSteps.map((s) => (
+                          <div key={s.id} className="flex items-center gap-3">
+                            <div
+                              className={`w-2 h-2 rounded-full ${
+                                s.status === "done"
+                                  ? "bg-emerald-400"
+                                  : s.status === "active"
+                                    ? "bg-bright-blue animate-pulse"
+                                    : "bg-white/20"
+                              }`}
+                            />
+                            <div className="flex-1 flex items-center justify-between gap-4 min-w-0">
+                              <span
+                                className={
+                                  s.status === "done"
+                                    ? "text-white/70"
+                                    : s.status === "active"
+                                      ? "text-white"
+                                      : "text-white/40"
+                                }
+                              >
+                                {s.label}
+                              </span>
+                              <span className="text-white/30 font-mono text-[10px]">
+                                {s.status === "done"
+                                  ? "OK"
+                                  : s.status === "active"
+                                    ? "RUN"
+                                    : "WAIT"}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  <div className="grid sm:grid-cols-3 gap-4">
+                    <div className="border border-white/10 bg-[#0A0A0A] p-4">
+                      <div className="text-white/40 uppercase tracking-widest text-[11px] mb-2">
+                        Verdict
+                      </div>
+                      <div
+                        className={
+                          reviewResult.passed
+                            ? "text-emerald-400 font-bold"
+                            : "text-amber-400 font-bold"
+                        }
+                      >
+                        {reviewResult.passed ? "Passed" : "Below threshold"}
+                      </div>
+                      <div className="mt-2 text-[11px] text-white/50">
+                        Threshold: {reviewResult.threshold}
+                      </div>
+                    </div>
                     <div className="border border-white/10 bg-[#0A0A0A] p-4">
                       <div className="text-white/40 uppercase tracking-widest text-[11px] mb-2">
                         Score
@@ -602,115 +737,287 @@ export default function QuestClaim() {
                           / 100
                         </span>
                       </div>
+                      <div className="mt-2 text-[11px] text-white/50">
+                        Mode: {reviewResult.reviewMode}
+                      </div>
                     </div>
                     <div className="border border-white/10 bg-[#0A0A0A] p-4">
                       <div className="text-white/40 uppercase tracking-widest text-[11px] mb-2">
-                        Threshold
+                        Evidence
                       </div>
-                      <div className="text-2xl font-bold text-white">
-                        {reviewResult.threshold}
+                      <div className="font-mono text-[11px] text-white/70 break-all">
+                        {reviewResult.evidenceHash}
                       </div>
                     </div>
                   </div>
 
-                  <div className="border border-white/10 bg-[#0A0A0A] p-4">
+                  <div className="border border-white/10 bg-[#0A0A0A] p-5">
                     <div className="text-white/40 uppercase tracking-widest text-[11px] mb-2">
-                      Verdict
+                      Summary
                     </div>
-                    <div
-                      className={
-                        reviewResult.passed
-                          ? "text-emerald-400 font-bold"
-                          : "text-amber-400 font-bold"
-                      }
-                    >
-                      {reviewResult.passed
-                        ? "✓ Passed — eligible to continue"
-                        : "✗ Below threshold"}
-                    </div>
-                    <p className="mt-3 text-white/60 leading-7">
-                      {reviewResult.summary}
-                    </p>
-                    <p className="mt-2 text-white/70 leading-7 text-xs">
-                      {reviewResult.analysisMessage}
-                    </p>
+                    {revealSummary ? (
+                      <>
+                        <p className="text-white/70 leading-7 text-sm">
+                          {reviewResult.summary}
+                        </p>
+                        <p className="mt-2 text-white/50 leading-7 text-xs">
+                          {reviewResult.analysisMessage}
+                        </p>
+                      </>
+                    ) : (
+                      <div className="text-sm text-white/50">
+                        Finalizing explanation…
+                      </div>
+                    )}
                   </div>
 
-                  {/* Score breakdown */}
-                  {reviewResult.breakdown && (
-                    <div className="border border-white/10 bg-[#0A0A0A] p-4">
-                      <div className="text-white/40 uppercase tracking-widest text-[11px] mb-3">
-                        Score Breakdown
-                      </div>
-                      <div className="space-y-2">
-                        {Object.entries(reviewResult.breakdown).map(
-                          ([key, val]) => (
-                            <div
-                              key={key}
-                              className="flex items-center justify-between"
-                            >
-                              <span className="text-xs text-white/60 capitalize">
-                                {key}
-                              </span>
-                              <div className="flex items-center gap-2">
-                                <div className="w-24 h-1 bg-white/5 overflow-hidden">
-                                  <div
-                                    className="h-full bg-bright-blue/60"
-                                    style={{
-                                      width: `${Math.min(100, (val as number) * 100)}%`,
-                                    }}
-                                  />
-                                </div>
-                                <span className="text-xs font-mono text-white/50">
-                                  {((val as number) * 100).toFixed(0)}
-                                </span>
+                  <details className="border border-white/10 bg-[#0A0A0A] p-5">
+                    <summary className="cursor-pointer select-none flex items-center justify-between gap-4">
+                      <span className="text-white/40 uppercase tracking-widest text-[11px] flex items-center gap-2">
+                        <CheckCircle size={12} className="text-bright-blue" />
+                        Audit steps
+                      </span>
+                      <ChevronDown size={14} className="text-white/40" />
+                    </summary>
+                    <div className="mt-4 space-y-3">
+                      {reviewResult.stepResults &&
+                      reviewResult.stepResults.length > 0 ? (
+                        reviewResult.stepResults
+                          .slice(0, Math.max(1, revealStepCount || 0))
+                          .map((step, idx) => (
+                          <div
+                            key={`${step.criterion}-${idx}`}
+                            className="border border-white/5 bg-white/[0.01] p-4"
+                          >
+                            <div className="flex items-center justify-between mb-2">
+                              <div className="text-[11px] font-bold text-white/80 uppercase tracking-widest">
+                                {step.criterion}
+                              </div>
+                              <div
+                                className={`text-[10px] font-mono px-2 py-1 border ${
+                                  step.passed
+                                    ? "border-emerald-400/30 text-emerald-300"
+                                    : "border-amber-400/30 text-amber-300"
+                                }`}
+                              >
+                                {step.passed ? "PASS" : "FAIL"}
                               </div>
                             </div>
-                          ),
+                            <p className="text-[12px] text-white/60 leading-relaxed italic">
+                              {step.evaluation}
+                            </p>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="text-sm text-white/50">
+                          No policy steps were provided for this quest.
+                        </div>
+                      )}
+                      {reviewResult.stepResults &&
+                        reviewResult.stepResults.length > 0 &&
+                        revealStepCount < reviewResult.stepResults.length && (
+                          <div className="text-[11px] text-white/40">
+                            Revealing step {revealStepCount + 1} /{" "}
+                            {reviewResult.stepResults.length}…
+                          </div>
                         )}
+                    </div>
+                  </details>
+
+                  {reviewResult.thinking && (
+                    <details className="border border-white/10 bg-[#0A0A0A] p-5">
+                      <summary className="cursor-pointer select-none flex items-center justify-between gap-4">
+                        <span className="text-white/40 uppercase tracking-widest text-[11px] flex items-center gap-2">
+                          <Sparkles size={12} className="text-bright-blue" />
+                          AI reasoning
+                        </span>
+                        <ChevronDown size={14} className="text-white/40" />
+                      </summary>
+                      <div className="mt-4 text-white/70 leading-relaxed text-sm italic border-l border-white/10 pl-4">
+                        {reviewResult.thinking}
                       </div>
-                    </div>
+                    </details>
                   )}
-
-                  <div className="border border-white/10 bg-[#0A0A0A] p-4 font-mono text-xs text-white/70 break-all">
-                    <div className="mb-2 text-white/40 uppercase tracking-widest">
-                      Evidence Hash
-                    </div>
-                    {reviewResult.evidenceHash}
-                  </div>
-
-                  <div className="text-[10px] uppercase tracking-widest text-white/30 flex items-center gap-1 mt-1">
-                    <Circle size={8} />
-                    Mode: {reviewResult.reviewMode}
-                  </div>
                 </div>
-              ) : (
-                <p className="text-white/50 text-sm leading-7">
-                  No AI review has been run yet. The result will be stored here
-                  after processing. The score details are private — only the
-                  pass/fail verdict is committed on-chain.
-                </p>
               )}
             </div>
 
-            {/* Commitment Panel */}
+            {/* Next action (commitment) */}
             <div className="bg-[#161616] border border-white/10 p-8">
-              <div className="flex items-center gap-3 mb-5 text-bright-blue">
-                <Wallet size={22} />
+              <div className="flex items-center gap-3 mb-4 text-bright-blue">
+                <Wallet size={20} />
                 <h2 className="text-lg font-bold uppercase tracking-widest">
-                  ZK Commitment
+                  Next: Commitment
                 </h2>
               </div>
-
               {commitmentResult ? (
                 <div className="space-y-4">
-                  {/* ZK Proof mode badge */}
                   <ProofModeBadge
                     mode={commitmentResult.proofMode}
                     reason={commitmentResult.chainNote}
                   />
+                  <div className="text-sm text-white/60 leading-7">
+                    Redirecting you to the proof page…
+                  </div>
+                </div>
+              ) : (
+                <div className="text-sm text-white/60 leading-7">
+                  {reviewResult ? (
+                    <p>
+                      Authorize a commitment to continue. This stores a privacy-safe
+                      commitment of the verdict and evidence hash.
+                    </p>
+                  ) : (
+                    <p>
+                      Run the AI review first. Once it completes, you’ll be able to
+                      authorize your commitment.
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
 
+          {/* ── Right: Status Panels (sticky, consolidated) ── */}
+          <div className="space-y-6 lg:sticky lg:top-8 self-start">
+            <div className="bg-[#161616] border border-white/10 p-6">
+              <div className="text-[10px] uppercase tracking-widest text-white/40 mb-3">
+                Overview
+              </div>
+              <div className="space-y-3 text-sm">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-white/50">Quest</span>
+                  <span className="text-white/80 font-mono text-xs">
+                    {questLabel}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-white/50">Artifact</span>
+                  <span
+                    className={
+                      article
+                        ? "text-emerald-300 text-xs"
+                        : "text-white/40 text-xs"
+                    }
+                  >
+                    {article ? "Verified (dev.to)" : "Not fetched"}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-white/50">Review</span>
+                  <span
+                    className={
+                      reviewResult
+                        ? reviewResult.passed
+                          ? "text-emerald-300 text-xs"
+                          : "text-amber-300 text-xs"
+                        : isReviewing
+                          ? "text-bright-blue text-xs"
+                          : "text-white/40 text-xs"
+                    }
+                  >
+                    {reviewResult
+                      ? reviewResult.passed
+                        ? "Passed"
+                        : "Needs admin / retry"
+                      : isReviewing
+                        ? "Running…"
+                        : "Not started"}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-white/50">Commitment</span>
+                  <span
+                    className={
+                      commitmentResult
+                        ? "text-emerald-300 text-xs"
+                        : "text-white/40 text-xs"
+                    }
+                  >
+                    {commitmentResult ? "Submitted" : "Not yet"}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <details className="bg-[#161616] border border-white/10 p-6">
+              <summary className="cursor-pointer select-none flex items-center justify-between gap-4">
+                <span className="text-[11px] uppercase tracking-widest text-white/50">
+                  Score breakdown
+                </span>
+                <ChevronDown size={14} className="text-white/40" />
+              </summary>
+              <div className="mt-4">
+                {reviewResult?.breakdown ? (
+                  <div className="space-y-3">
+                    {Object.entries(reviewResult.breakdown).map(([key, val]) => (
+                      <div
+                        key={key}
+                        className="flex items-center justify-between gap-4"
+                      >
+                        <span className="text-xs text-white/60 capitalize">
+                          {key}
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <div className="w-24 h-1 bg-white/5 overflow-hidden">
+                            <div
+                              className="h-full bg-bright-blue/60"
+                              style={{
+                                width: `${Math.min(100, Math.max(0, val as number))}%`,
+                              }}
+                            />
+                          </div>
+                          <span className="text-xs font-mono text-white/50">
+                            {(val as number).toFixed(0)}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-sm text-white/50">
+                    Run the AI review to see the score breakdown.
+                  </div>
+                )}
+              </div>
+            </details>
+
+            <details className="bg-[#161616] border border-white/10 p-6">
+              <summary className="cursor-pointer select-none flex items-center justify-between gap-4">
+                <span className="text-[11px] uppercase tracking-widest text-white/50">
+                  Evidence + mode
+                </span>
+                <ChevronDown size={14} className="text-white/40" />
+              </summary>
+              <div className="mt-4 space-y-3">
+                <div className="text-[10px] uppercase tracking-widest text-white/30 flex items-center gap-1">
+                  <Circle size={8} />
+                  Mode: {reviewResult?.reviewMode ?? "—"}
+                </div>
+                <div className="border border-white/10 bg-[#0A0A0A] p-4 font-mono text-xs text-white/70 break-all">
+                  <div className="mb-2 text-white/40 uppercase tracking-widest">
+                    Evidence Hash
+                  </div>
+                  {reviewResult?.evidenceHash ??
+                    "Run review to generate evidence hash."}
+                </div>
+              </div>
+            </details>
+
+            <details className="bg-[#161616] border border-white/10 p-6">
+              <summary className="cursor-pointer select-none flex items-center justify-between gap-4">
+                <span className="text-[11px] uppercase tracking-widest text-white/50">
+                  ZK commitment details
+                </span>
+                <ChevronDown size={14} className="text-white/40" />
+              </summary>
+              <div className="mt-4">
+                {commitmentResult ? (
                   <div className="space-y-3 text-sm">
+                    <ProofModeBadge
+                      mode={commitmentResult.proofMode}
+                      reason={commitmentResult.chainNote}
+                    />
                     <div className="border border-white/10 bg-[#0A0A0A] p-4 font-mono text-xs text-white/70 break-all">
                       <div className="mb-2 text-white/40 uppercase tracking-widest">
                         Commitment ID
@@ -731,23 +1038,16 @@ export default function QuestClaim() {
                         {commitmentResult.onChainTxId}
                       </div>
                     )}
-                    <p className="text-white/60 leading-7 text-xs">
-                      {commitmentResult.chainNote}
-                    </p>
+                    <PrivacyBreakdown commitment={commitmentResult} />
                   </div>
-
-                  {/* Privacy breakdown */}
-                  <PrivacyBreakdown commitment={commitmentResult} />
-                </div>
-              ) : (
-                <div>
-                  <p className="text-white/50 text-sm leading-7 mb-4">
-                    Once the AI review passes, authorize the commitment with
-                    your wallet popup.
-                  </p>
-                </div>
-              )}
-            </div>
+                ) : (
+                  <div className="text-sm text-white/50 leading-7">
+                    Commitment details appear after you authorize with your
+                    wallet.
+                  </div>
+                )}
+              </div>
+            </details>
           </div>
         </div>
       </div>
