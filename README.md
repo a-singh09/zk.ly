@@ -14,6 +14,8 @@ Hackathon track:
 
 - **AI Track** (AI-reviewed quests + auditable policy steps)
 
+Video Demo: https://drive.google.com/drive/u/0/folders/18WMqWS_LL4IBgWr7AeFW1PBsP646XNrU
+
 ---
 
 ## Preprod deployment
