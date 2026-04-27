@@ -10,6 +10,8 @@
     "compile:completion-registry": "compact compile contracts/completion-registry.compact contracts/managed/completion-registry",
     "compile:reward-escrow": "compact compile contracts/reward-escrow.compact contracts/managed/reward-escrow",
     "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "deploy": "tsx src/deploy.ts",
     "cli": "tsx src/cli.ts",
     "api": "tsx ../backend/src/api/server.ts",
@@ -20,7 +22,8 @@
     "@types/node": "^22.0.0",
     "@types/ws": "^8.18.1",
     "tsx": "^4.21.0",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
   },
   "dependencies": {
     "@midnight-ntwrk/compact-js": "2.5.0",

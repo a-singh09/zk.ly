@@ -19,6 +19,25 @@ npm run compile
 
 This runs `compact compile` for each contract under `contracts/contracts/` and writes outputs under `contracts/managed/`.
 
+### Run circuit unit tests (local, offline)
+
+These tests execute the **compiled managed contracts** (under `contracts/contracts/managed/*`) using `@midnight-ntwrk/compact-runtime`, and assert both:
+
+- happy paths (e.g. `create_quest`, `verify_completion`, escrow reservation), and
+- expected circuit assertion failures (e.g. criteria commitment mismatch, escrow budget exhausted).
+
+From `contracts/`:
+
+```bash
+npm test
+```
+
+Watch mode:
+
+```bash
+npm run test:watch
+```
+
 ### Run the proof server
 
 ```bash
@@ -81,10 +100,6 @@ Key ideas:
 
 This keeps “reward payment” separate from “proof submission”.
 
-### 4) `hello-world.compact`
-
-Sanity/boilerplate contract used for baseline compile/deploy validation.
-
 ---
 
 ## The ZK proof boundary (what’s private vs public)
@@ -123,5 +138,5 @@ Sanity/boilerplate contract used for baseline compile/deploy validation.
 
 - Backend compiles/loads managed contracts from `contracts/managed/*`
 - The local proof server (Docker) produces proofs for contract circuits
-- Frontend drives user/admin actions; backend indexes + coordinates chain interactions
+- Frontend drives user/admin actions + coordinates chain interactions
 
